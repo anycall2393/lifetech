@@ -133,26 +133,35 @@
   </div>
 </div>
 
+<!-- =====================================================
+     🔧 선생님이 바꿀 곳 — 아래 따옴표 안에 웹앱 주소(…/exec)만 붙여넣으세요.
+        ✔ 따옴표는 앞뒤에 하나씩만:  var API_URL = 'https://script.google.com/macros/s/…/exec';
+        ⚠️ 이 파일에는 Gemini API 키를 절대 넣지 마세요. (GitHub는 누구나 볼 수 있어요)
+     ===================================================== -->
 <script>
-  /* =====================================================
-   *  🔧 선생님이 바꿀 곳 — 딱 한 줄
-   *  Apps Script 웹앱 주소(…/exec)를 따옴표 안에 붙여넣으세요.
-   *  ⚠️ 이 파일에는 Gemini API 키를 절대 넣지 마세요. (GitHub는 누구나 볼 수 있어요)
-   * ===================================================== */
-  const API_URL = 'https://script.google.com/macros/s/AKfycbyvu4j9HhuqSh2rdlrX1rsliTKTeEg7EdkrjWOJxyoODmbGUqhkFsQIC1cdclkLF6VH/exec';
+  var API_URL = 'https://script.google.com/macros/s/AKfycbw6y0RTfO0SRbKM6Fti8eCRe0x66NkSq9wEa9btsAqz1n6NK9P2X7Ygxim-0FO-O-XX/exec';
+</script>
 
+<script>
   const PAGE_VERSION = 'GitHub판';
+
+  // 주소 정리: 앞뒤 공백·따옴표가 섞여 들어가도 괜찮게
+  const SERVER = (typeof API_URL === 'string' ? API_URL : '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
+  const CONFIG_BROKEN = typeof API_URL !== 'string';   // 위 설정 줄에 오타가 있으면 true
 
   /* ---------- 🌐 서버(Apps Script) 부르기 ---------- */
   // Content-Type을 일부러 지정하지 않음 → 브라우저가 text/plain으로 보내서 Apps Script와 바로 통신됨
   async function api(action, args, timeoutMs){
-    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL)){
-      throw new Error('선생님 확인: index.html 맨 위 API_URL에 웹앱 주소(…/exec)를 넣어 주세요.');
+    if(CONFIG_BROKEN){
+      throw new Error('선생님 확인: index.html의 API_URL 줄에 오타가 있어요. 따옴표가 앞뒤에 하나씩만 있는지 봐 주세요.');
+    }
+    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(SERVER)){
+      throw new Error('선생님 확인: index.html의 API_URL에 웹앱 주소(https://script.google.com/…/exec)를 넣어 주세요.');
     }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs || 90000);
     try{
-      const res = await fetch(API_URL, {
+      const res = await fetch(SERVER, {
         method: 'POST',
         body: JSON.stringify({ action: action, args: args || {} }),
         signal: ctrl.signal
@@ -160,12 +169,12 @@
       const text = await res.text();
       let data;
       try{ data = JSON.parse(text); }
-      catch(e){ throw new Error('서버 응답을 읽지 못했어요. (선생님 확인: Api.gs 추가 후 "새 버전"으로 배포했는지)'); }
+      catch(e){ throw new Error('서버 응답을 읽지 못했어요. (선생님 확인: Code.gs를 바꾼 뒤 "새 버전"으로 배포했는지)'); }
       if(!data.ok) throw new Error(data.error || '서버에서 오류가 났어요.');
       return data.result;
     }catch(e){
       if(e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려요. 잠시 후 다시 보내 주세요.');
-      if(e instanceof TypeError) throw new Error('서버에 연결하지 못했어요. (선생님 확인: 웹앱 액세스 권한이 "모든 사용자"인지, 주소가 /exec로 끝나는지)');
+      if(e instanceof TypeError) throw new Error('서버에 연결하지 못했어요. (선생님 확인: 웹앱 주소를 브라우저 시크릿 창에서 열어 "✅ 서버 작동 중"이 보이는지, 액세스 권한이 "모든 사용자"인지)');
       throw e;
     }finally{
       clearTimeout(timer);
