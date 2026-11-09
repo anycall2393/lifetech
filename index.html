@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root{
+    --green:#2f855a; --green-d:#22543d; --green-l:#e8f5ec; --mint:#f3faf5;
+    --bg:#eef3ef; --text:#1f2a24; --muted:#5f6b64; --line:#d9e3dc; --white:#fff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:var(--bg);color:var(--text)}
+  .app{max-width:780px;margin:0 auto;height:100vh;display:flex;flex-direction:column;background:var(--white);box-shadow:0 0 24px rgba(0,0,0,.06)}
+
+  header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:16px 20px}
+  header h1{margin:0;font-size:20px}
+  header p{margin:4px 0 0;font-size:13px;opacity:.9}
+  header .ver{font-size:11px;opacity:.7;margin-left:6px}
+  .userbar{display:flex;justify-content:space-between;align-items:center;padding:8px 20px;background:var(--green-l);font-size:14px;border-bottom:1px solid var(--line)}
+  .userbar button{background:none;border:1px solid var(--green);color:var(--green);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer}
+
+  .topics{display:flex;gap:8px;padding:12px 16px 4px;overflow-x:auto}
+  .chip{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer;white-space:nowrap;color:var(--text)}
+  .chip.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+
+  .info{margin:8px 16px;padding:12px 14px;background:var(--mint);border:1px solid var(--line);border-radius:12px;font-size:14px;line-height:1.55}
+  .info b{color:var(--green-d)}
+  .examples{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .ex{border:1px dashed var(--green);background:#fff;color:var(--green-d);border-radius:8px;padding:5px 9px;font-size:13px;cursor:pointer}
+  .ex:hover{background:var(--green-l)}
+  .custom{display:flex;gap:6px;margin-top:8px}
+  .custom input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit}
+  .custom input:focus{outline:2px solid var(--green);border-color:transparent}
+  .custom button{border:none;background:var(--green);color:#fff;border-radius:8px;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer}
+  .custom-now{margin-top:6px;font-size:13px;color:var(--green-d)}
+
+  .chat{flex:1;overflow-y:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:88%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.6;word-break:keep-all;overflow-wrap:anywhere}
+  .msg.user{align-self:flex-end;background:var(--green);color:#fff;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:#f2f4f3;border-bottom-left-radius:4px}
+  .msg.error{background:#fff4e5;border:1px solid #f6c48b}
+  .msg .tag{display:block;font-size:11px;opacity:.75;margin-bottom:2px}
+  .msg ul{margin:6px 0;padding-left:20px}
+  .meta{margin-top:6px;font-size:11px;color:var(--muted)}
+
+  /* 📚 찾은 자료 */
+  .box{margin-top:10px;padding-top:8px;border-top:1px dashed #c9d4cd}
+  .box > b{display:block;font-size:12px;color:var(--green-d);margin-bottom:4px}
+  .src{display:block;padding:5px 8px;margin:3px 0;background:#fff;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;font-size:13px;line-height:1.4}
+  .src:hover{border-color:var(--green)}
+  .src small{display:block;color:var(--muted);font-size:11px}
+
+  /* ▶️ 영상 */
+  .video{display:flex;gap:10px;align-items:center;margin:6px 0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;text-decoration:none;color:inherit}
+  .video:hover{border-color:var(--green)}
+  .video .thumb{position:relative;flex:0 0 140px;height:79px;background:#000}
+  .video .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .video .thumb i{position:absolute;inset:0;margin:auto;width:34px;height:24px;border-radius:7px;background:rgba(220,0,0,.9);color:#fff;font-size:12px;font-style:normal;display:flex;align-items:center;justify-content:center}
+  .video .vtxt{padding:6px 10px 6px 0;font-size:13px;line-height:1.4}
+  .video .vtxt small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .ytmore{display:inline-block;margin-top:4px;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #e3a5a5;color:#b42318;font-size:13px;text-decoration:none}
+  .ytmore:hover{background:#fff1f1}
+  .nofound{font-size:13px;color:var(--muted);margin-bottom:4px}
+  /* ▶️ 채팅 안 유튜브 플레이어 */
+  .msg.bot.has-video{width:88%}
+  .player{position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000;margin:4px 0 6px}
+  .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  .nowplaying{font-size:13px;line-height:1.45;margin-bottom:6px}
+  .nowplaying small{color:var(--muted);font-size:11px}
+  .nowplaying a{color:var(--green-d);font-size:12px;margin-left:6px;white-space:nowrap}
+  .vthumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:6px}
+  .vthumb{display:block;text-align:left;padding:0;border:2px solid transparent;border-radius:8px;background:#fff;cursor:pointer;overflow:hidden;font-family:inherit}
+  .vthumb.on{border-color:var(--green)}
+  .vthumb img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#000}
+  .vthumb span{display:block;padding:4px 6px;font-size:11px;line-height:1.35;color:var(--text);max-height:3.1em;overflow:hidden}
+  .pick{display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;background:var(--green-l);color:var(--green-d);font-size:10px;vertical-align:middle}
+
+  /* 📷 사진 */
+  .gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .gallery figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .gallery a{display:block;color:inherit;text-decoration:none}
+  .gallery img{display:block;width:100%;height:130px;object-fit:cover;background:#e5ebe7}
+  .gallery figcaption{padding:5px 8px;font-size:12px;line-height:1.35}
+  .gallery figcaption small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  .credit{font-size:11px;color:var(--muted);margin-top:6px}
+
+  .typing{align-self:flex-start;background:#f2f4f3;border-radius:14px;padding:12px 16px;display:flex;gap:4px;align-items:center}
+  .typing span{width:7px;height:7px;border-radius:50%;background:#9aa8a0;animation:b 1s infinite}
+  .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+  .typing em{font-style:normal;font-size:12px;color:var(--muted);margin-left:6px}
+  @keyframes b{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-5px);opacity:1}}
+
+  .inputbar{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#fff}
+  .inputbar textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;font-family:inherit;height:48px;max-height:120px}
+  .inputbar textarea:focus{outline:2px solid var(--green);border-color:transparent}
+  .inputbar button{background:var(--green);color:#fff;border:none;border-radius:12px;padding:0 18px;font-size:15px;font-weight:600;cursor:pointer}
+  .inputbar button:disabled{background:#a9c3b3;cursor:not-allowed}
+
+  .modal{position:fixed;inset:0;background:rgba(20,40,30,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .modal.hidden{display:none}
+  .card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:380px;text-align:center}
+  .card h2{margin:0 0 6px;font-size:20px}
+  .card p{margin:0 0 16px;color:var(--muted);font-size:14px}
+  .card input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;margin-bottom:12px}
+  .card button{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer}
+  .notice{font-size:12px;color:var(--muted);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🧬 생명 기술 질문 챗봇</h1>
+    <p>중3 기술 · 6단원 생명 기술의 이해<span class="ver" id="ver"></span></p>
+  </header>
+
+  <div class="userbar">
+    <span>👋 <b id="whoami">-</b> 학생</span>
+    <button id="changeName">이름 바꾸기</button>
+  </div>
+
+  <div class="topics" id="topics"></div>
+  <div class="info" id="info"></div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="inputbar">
+    <textarea id="q" placeholder="궁금한 것을 물어보세요! (Enter: 보내기, Shift+Enter: 줄바꿈)" maxlength="500"></textarea>
+    <button id="send">보내기</button>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="card">
+    <h2>🌱 반가워요!</h2>
+    <p>질문하기 전에 학번과 이름을 적어 주세요.</p>
+    <input id="nameInput" placeholder="예) 3105 홍길동" maxlength="30">
+    <button id="start">시작하기</button>
+    <div class="notice">이름·질문·찾은 자료는 수업 기록용으로 선생님 시트에 저장돼요.<br>이름 외의 개인 정보는 질문에 적지 마세요.</div>
+  </div>
+</div>
+
+<script>
+  /* ---------- 주제와 예시 질문 ---------- */
+  const TOPICS = {
+    all: { label:'🧬 전체', name:'생명 기술',
+      desc:'생물의 특성과 기능을 이용해 인간에게 유용한 물질이나 생물을 만들어 내는 기술이에요.',
+      examples:['생명 기술이 무엇인가요?','4가지 생명 기술의 차이를 알려주세요.','생명 기술 최신 뉴스를 찾아 주세요.'] },
+    nuclear: { label:'🐑 핵 이식', name:'핵 이식 기술',
+      desc:'핵을 없앤 난자에 다른 개체의 체세포 핵을 넣어, 유전적으로 같은 개체(복제 동물)를 만드는 기술이에요.',
+      examples:['복제 양 돌리는 어떻게 만들어졌나요?','핵 이식 과정 영상을 찾아 주세요.','복제 양 돌리 사진을 보여 주세요.'] },
+    gene: { label:'🧪 유전자 재조합', name:'유전자 재조합 기술',
+      desc:'어떤 생물의 유용한 유전자를 잘라 내어 다른 생물의 DNA에 끼워 넣는 기술이에요.',
+      examples:['대장균으로 인슐린을 어떻게 만드나요?','GMO 식품은 안전한가요?','GMO 관련 최신 뉴스를 찾아 주세요.'] },
+    fusion: { label:'🥔 세포 융합', name:'세포 융합 기술',
+      desc:'서로 다른 두 종류의 세포를 하나로 합쳐 두 세포의 특징을 함께 가진 세포를 만드는 기술이에요.',
+      examples:['포마토는 어떻게 만들어졌나요?','세포 융합과 유전자 재조합은 뭐가 달라요?','세포 융합 자료를 찾아 주세요.'] },
+    tissue: { label:'🌱 조직 배양', name:'조직 배양 기술',
+      desc:'생물의 조직이나 세포 일부를 영양분이 든 배지에서 길러 새로운 개체나 조직을 얻는 기술이에요.',
+      examples:['조직 배양으로 묘목을 대량으로 만드는 방법은?','조직 배양 영상을 찾아 주세요.','조직 배양 사진을 보여 주세요.'] },
+    custom: { label:'✏️ 직접 입력', name:'직접 입력',
+      desc:'궁금한 생명 기술 주제를 직접 적어 보세요. (예: 줄기세포, 유전자 가위, 백신, 바이오 연료)',
+      examples:[] }
+  };
+
+  // 기다리는 동안 보여 줄 안내 (서버와 같은 기준)
+  const WEB_WORDS = /찾아|검색|자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/;
+  const VIDEO_WORDS = /유튜브|youtube|영상|동영상|비디오/i;
+  const PHOTO_WORDS = /사진|이미지|그림|보여\s*줘|보여\s*주/;
+
+  let userName = '';
+  let topic = 'all';
+  let history = [];
+  let busy = false;
+  let customTopic = '';
+
+  const $ = id => document.getElementById(id);
+  const chat = $('chat'), qBox = $('q'), sendBtn = $('send');
+
+  /* ---------- 이름 ---------- */
+  function openModal(){ $('modal').classList.remove('hidden'); $('nameInput').value = userName; setTimeout(() => $('nameInput').focus(), 50); }
+  function setName(){
+    const v = $('nameInput').value.trim();
+    if(!v){ $('nameInput').focus(); return; }
+    userName = v;
+    try{ sessionStorage.setItem('lifeTechName', v); }catch(e){}
+    $('whoami').textContent = v;
+    $('modal').classList.add('hidden');
+    qBox.focus();
+  }
+  $('start').onclick = setName;
+  $('nameInput').addEventListener('keydown', e => { if(e.key === 'Enter') setName(); });
+  $('changeName').onclick = openModal;
+
+  /* ---------- 주제 ---------- */
+  function topicLabel(){
+    return topic === 'custom' && customTopic ? '✏️ ' + customTopic : TOPICS[topic].label;
+  }
+  function setCustom(v){
+    v = String(v || '').replace(/[<>\[\]{}"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+    if(!v){ const box = $('customInput'); if(box) box.focus(); return; }
+    customTopic = v;
+    try{ sessionStorage.setItem('lifeTechCustom', v); }catch(e){}
+    renderTopics();
+    qBox.focus();
+  }
+  function renderTopics(){
+    $('topics').innerHTML = '';
+    Object.keys(TOPICS).forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (k === topic ? ' active' : '');
+      b.textContent = (k === 'custom' && customTopic) ? '✏️ ' + customTopic : TOPICS[k].label;
+      b.onclick = () => { topic = k; renderTopics(); };
+      $('topics').appendChild(b);
+    });
+    const t = TOPICS[topic];
+    $('info').innerHTML = '<b>' + t.name + '</b> · ' + esc(t.desc) + '<div class="examples"></div>';
+    let examples = t.examples;
+
+    // ✏️ 직접 입력: 주제 입력란 + 그 주제로 만든 예시 질문
+    if(topic === 'custom'){
+      const wrap = document.createElement('div');
+      wrap.innerHTML = '<div class="custom"><input id="customInput" maxlength="20" placeholder="주제를 적어 주세요 (예: 줄기세포)">' +
+        '<button id="customSet">' + (customTopic ? '바꾸기' : '정하기') + '</button></div>' +
+        (customTopic ? '<div class="custom-now">지금 주제: <b>' + esc(customTopic) + '</b></div>' : '');
+      $('info').insertBefore(wrap, $('info').querySelector('.examples'));
+      $('customInput').value = customTopic;
+      $('customSet').onclick = () => setCustom($('customInput').value);
+      $('customInput').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); setCustom($('customInput').value); } });
+      examples = customTopic
+        ? [customTopic + '은(는) 무엇인가요?', customTopic + ' 자료를 찾아 주세요.', customTopic + ' 영상을 찾아 주세요.']
+        : [];
+      if(!customTopic) setTimeout(() => $('customInput') && $('customInput').focus(), 50);
+    }
+
+    const ex = $('info').querySelector('.examples');
+    examples.forEach(q => {
+      const e = document.createElement('button');
+      e.className = 'ex'; e.textContent = '💬 ' + q;
+      e.onclick = () => send(q, true);
+      ex.appendChild(e);
+    });
+  }
+
+  /* ---------- 화면 그리기 ---------- */
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function safeUrl(u){ u = String(u || ''); return /^https:\/\//.test(u) ? esc(u) : ''; }
+  function link(url, inner, cls){
+    return '<a class="' + cls + '" href="' + safeUrl(url) + '" target="_blank" rel="noopener">' + inner + '</a>';
+  }
+
+  function formatAnswer(text){
+    let html = '', inList = false;
+    esc(text).split('\n').forEach(line => {
+      const m = line.match(/^\s*[-*•]\s+(.*)/);
+      if(m){
+        if(!inList){ html += '<ul>'; inList = true; }
+        html += '<li>' + m[1] + '</li>';
+      } else {
+        if(inList){ html += '</ul>'; inList = false; }
+        html += line.trim() ? line + '<br>' : '<br>';
+      }
+    });
+    if(inList) html += '</ul>';
+    return html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(<br>)+$/, '');
+  }
+
+  // 🌐 찾은 웹 자료
+  function sourcesHtml(sources){
+    const items = (sources || []).filter(s => safeUrl(s.url));
+    if(!items.length) return '';
+    let html = '<div class="box"><b>📚 인터넷에서 찾은 자료</b>';
+    items.forEach(s => {
+      const icon = s.kind === '뉴스' ? '📰 ' : '📖 ';
+      const sub = [s.site, s.date].filter(Boolean).join(' · ');
+      html += link(s.url, icon + esc(s.title) + (sub ? '<small>' + esc(sub) + '</small>' : ''), 'src');
+    });
+    return html + '</div>';
+  }
+
+  // ▶️ 유튜브 영상 — 답변을 먼저 보여 준 뒤, 영상 칸을 따로 채움
+  const VIDEO_MAX = 3;
+  // 유튜브 플레이어 주소 (개인정보 보호 모드 youtube-nocookie, 관련 영상은 같은 채널 위주)
+  function embedUrl(id, autoplay){
+    return 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
+      '?rel=0&modestbranding=1&playsinline=1' + (autoplay ? '&autoplay=1' : '');
+  }
+  function nowPlayingHtml(v){
+    return esc(v.title) + (v.teacher ? '<span class="pick">선생님 추천</span>' : '') +
+      (v.channel ? ' <small>· ' + esc(v.channel) + '</small>' : '') +
+      link(v.url, '유튜브에서 보기 ↗', '');
+  }
+  // 찾은 영상: 첫 영상은 플레이어로 바로, 나머지는 썸네일 → 누르면 플레이어에서 재생
+  function playerHtml(list){
+    const first = list[0];
+    let html = '<div class="player"><iframe src="' + embedUrl(first.id, false) + '" title="' + esc(first.title) + '"' +
+      ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"' +
+      ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>' +
+      '<div class="nowplaying">' + nowPlayingHtml(first) + '</div>';
+    if(list.length > 1){
+      html += '<div class="vthumbs">' + list.map((v, i) =>
+        '<button type="button" class="vthumb' + (i === 0 ? ' on' : '') + '" data-i="' + i + '">' +
+        '<img src="' + safeUrl(v.thumb) + '" alt=""><span>' + (i === 0 ? '▶ ' : '') + esc(v.title) + '</span></button>'
+      ).join('') + '</div>';
+    }
+    return html;
+  }
+  function wirePlayer(box, list){
+    box.querySelectorAll('.vthumb').forEach(btn => {
+      btn.onclick = () => {
+        const v = list[Number(btn.dataset.i)];
+        box.querySelector('.player iframe').src = embedUrl(v.id, true);   // 누르면 바로 재생
+        box.querySelector('.nowplaying').innerHTML = nowPlayingHtml(v);
+        box.querySelectorAll('.vthumb').forEach(b => {
+          b.classList.toggle('on', b === btn);
+          const span = b.querySelector('span');
+          span.textContent = (b === btn ? '▶ ' : '') + list[Number(b.dataset.i)].title;
+        });
+      };
+    });
+  }
+  // 영상 칸 만들기 (처음엔 "찾는 중")
+  function addVideoBox(msgEl){
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.innerHTML = '<b>▶️ 찾은 영상</b><div class="nofound">🔎 영상을 찾고 있어요…</div>';
+    const meta = msgEl.querySelector('.meta');
+    msgEl.insertBefore(box, meta || null);
+    chat.scrollTop = chat.scrollHeight;
+    return box;
+  }
+  // 찾은 영상 중 '썸네일이 진짜로 열리는 것'만 최대 3개 보여 주기 → 없는 영상은 안 보임
+  function fillVideoBox(box, videos, more, done){
+    const list = (videos || []).filter(v => safeUrl(v.url) && safeUrl(v.thumb));
+    const moreLink = safeUrl(more) ? '<div>' + link(more, '🔍 유튜브에서 더 찾아보기', 'ytmore') + '</div>' : '';
+    box.innerHTML = '<b>▶️ 찾은 영상</b><div class="vlist"></div><div class="nofound vstatus">' +
+      (list.length ? '🔎 영상을 확인하고 있어요…' : '') + '</div>' + moreLink;
+    const vlist = box.querySelector('.vlist'), status = box.querySelector('.vstatus');
+    const ok = [];
+    let pending = list.length, finished = false;
+
+    function finish(){
+      if(finished) return;
+      finished = true;
+      ok.sort((a, b) => a.i - b.i);
+      const shown = ok.map(x => x.v);
+      if(shown.length){
+        vlist.innerHTML = playerHtml(shown);
+        wirePlayer(box, shown);
+        box.closest('.msg').classList.add('has-video');
+        status.className = 'credit';
+        status.textContent = '▶ 버튼을 누르면 여기서 바로 재생돼요. 재생이 안 되는 영상은 "유튜브에서 보기"를 눌러 주세요.';
+      } else {
+        status.textContent = '알맞은 영상을 바로 찾지 못했어요. 아래 버튼으로 유튜브에서 직접 찾아보세요.';
+      }
+      chat.scrollTop = chat.scrollHeight;
+      if(done) done(ok.map(x => x.v));
+    }
+    function step(){ pending--; if(pending <= 0 || ok.length >= VIDEO_MAX) finish(); }
+
+    // 확실한 영상(선생님 추천·내장 목록·유튜브 API)은 바로 보여 주고, 나머지만 썸네일로 확인
+    list.forEach((v, i) => { if(v.trusted && ok.length < VIDEO_MAX) ok.push({ v: v, i: i }); });
+    const toCheck = ok.length >= VIDEO_MAX ? [] : list.map((v, i) => ({ v: v, i: i })).filter(x => !x.v.trusted);
+    pending = toCheck.length;
+    if(!pending){ finish(); return; }
+    toCheck.forEach(({ v, i }) => {
+      const img = new Image();
+      img.onload = () => {
+        // 없는 영상은 유튜브가 120px짜리 빈 그림을 주므로 걸러 냄
+        if(!finished && img.naturalWidth > 120 && ok.length < VIDEO_MAX) ok.push({ v: v, i: i });
+        step();
+      };
+      img.onerror = step;
+      img.src = v.thumb;
+    });
+    setTimeout(finish, 6000);   // 썸네일이 늦어도 6초 안에는 정리
+  }
+
+  // 📷 사진
+  function galleryHtml(images){
+    const items = (images || []).filter(im => safeUrl(im.thumb) && safeUrl(im.page));
+    if(!items.length) return '';
+    let html = '<div class="box"><b>📷 사진</b><div class="gallery">';
+    items.forEach(im => {
+      const by = [im.author, im.license].filter(Boolean).join(' · ');
+      html += '<figure>' + link(im.page,
+        '<img src="' + safeUrl(im.thumb) + '" alt="' + esc(im.title) + '" loading="lazy">' +
+        '<figcaption>' + esc(im.title) + (by ? '<small>' + esc(by) + '</small>' : '') + '</figcaption>', '') + '</figure>';
+    });
+    return html + '</div><div class="credit">사진 출처: 위키미디어 공용 · 누르면 원본과 저작권 정보를 볼 수 있어요.</div></div>';
+  }
+
+  function addMsg(role, text, opts){
+    opts = opts || {};
+    const d = document.createElement('div');
+    d.className = 'msg ' + role + (opts.error ? ' error' : '');
+    if(role === 'user'){
+      d.innerHTML = '<span class="tag">' + esc(opts.label || topicLabel()) + '</span>' + esc(text).replace(/\n/g, '<br>');
+    } else {
+      d.innerHTML = formatAnswer(text)
+        + sourcesHtml(opts.sources)
+        + galleryHtml(opts.images)
+        + (opts.meta ? '<div class="meta">' + esc(opts.meta) + '</div>' : '');
+    }
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+    d.querySelectorAll('img').forEach(img => img.addEventListener('load', () => { chat.scrollTop = chat.scrollHeight; }));
+    return d;
+  }
+
+  function showTyping(label){
+    const t = document.createElement('div');
+    t.className = 'typing'; t.id = 'typing';
+    t.innerHTML = '<span></span><span></span><span></span>' + (label ? '<em>' + esc(label) + '</em>' : '');
+    chat.appendChild(t); chat.scrollTop = chat.scrollHeight;
+  }
+  function hideTyping(){ const t = $('typing'); if(t) t.remove(); }
+  function setBusy(v){ busy = v; sendBtn.disabled = v; sendBtn.textContent = v ? '생각 중…' : '보내기'; }
+
+  /* ---------- 보내기 ---------- */
+  function send(text, isExample){
+    text = (text || qBox.value).trim();
+    if(!text || busy) return;
+    if(!userName){ openModal(); return; }
+    if(topic === 'custom' && !customTopic){
+      addMsg('bot', '✏️ 먼저 위 입력란에 **주제**를 적고 [정하기]를 눌러 주세요.', { error:true });
+      const box = $('customInput'); if(box) box.focus();
+      return;
+    }
+    const sentTopic = topic, sentName = userName, sentCustom = topic === 'custom' ? customTopic : '';
+    addMsg('user', text);
+    qBox.value = '';
+    setBusy(true);
+
+    // 서버(Code.gs의 detectIntent_)와 같은 기준
+    const video = VIDEO_WORDS.test(text);
+    const photo = PHOTO_WORDS.test(text) && (/사진|이미지|그림/.test(text) || !video);
+    const web = WEB_WORDS.test(text) && (/자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/.test(text) || (!video && !photo));
+    const jobs = [];
+    if(web) jobs.push('인터넷 자료');
+    if(photo) jobs.push('사진');
+    showTyping(jobs.length ? jobs.join(' · ') + '을(를) 찾고 있어요…' : '');
+
+    const started = Date.now();
+
+    // ⚡ 영상은 답변을 기다리지 않고 '지금 바로' 같이 찾기 시작
+    const vid = { done: false, result: null, onReady: null };
+    if(video){
+      const ready = r => { vid.done = true; vid.result = r; if(vid.onReady) vid.onReady(r); };
+      google.script.run
+        .withSuccessHandler(r => ready(r || { videos: [] }))
+        .withFailureHandler(() => ready({ videos: [] }))
+        .findVideosFor(text, sentTopic, history.slice(), sentCustom);
+    }
+
+    google.script.run
+      .withSuccessHandler(res => {
+        hideTyping(); setBusy(false);
+        const sec = ((Date.now() - started) / 1000).toFixed(1);
+        const msgEl = addMsg('bot', res.answer, {
+          error: !res.ok, sources: res.sources, images: res.images,
+          meta: res.ok ? '⚡ ' + sec + '초' + (res.cached ? ' · 저장된 답' : '') : ''
+        });
+        if(res.ok){
+          history.push({ role:'user', text:text }, { role:'model', text:res.answer });
+          history = history.slice(-4);
+        }
+        qBox.focus();
+
+        // 🗂 기록 저장 (화면은 이미 끝났고, 뒤에서 저장 → 학생은 기다리지 않음)
+        const save = videos => {
+          const found = []
+            .concat((res.sources || []).map(s => ({ type:'웹', title:s.title, url:s.url })))
+            .concat((videos || []).map(v => ({ type:'영상', title:v.title, url:v.url })))
+            .concat((res.images || []).map(im => ({ type:'사진', title:im.title, url:im.page })));
+          google.script.run.saveLog(sentName, sentTopic, text, res.answer, res.ok, found, res.query || {}, sec, sentCustom);
+        };
+
+        // ▶️ 영상: 이미 같이 찾고 있던 결과를 붙임 (먼저 끝났으면 바로, 아니면 끝나는 대로)
+        if(res.ok && res.videoQuery){
+          const box = addVideoBox(msgEl);
+          const more = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(res.videoQuery);
+          let settled = false;
+          const show = r => {
+            if(settled) return;
+            settled = true; clearTimeout(giveUp);
+            fillVideoBox(box, r && r.videos, (r && r.more) || more, save);
+          };
+          const giveUp = setTimeout(() => show({ videos: [] }), 30000);
+          if(!video){   // 화면에서는 영상 질문이 아니라고 봤지만 서버가 영상 검색어를 준 경우
+            google.script.run.withSuccessHandler(show).withFailureHandler(() => show({ videos: [] }))
+              .findVideos(res.videoQuery, sentTopic);
+          } else if(vid.done){
+            show(vid.result);
+          } else {
+            vid.onReady = show;
+          }
+        } else {
+          save([]);
+        }
+      })
+      .withFailureHandler(err => {
+        hideTyping(); setBusy(false);
+        addMsg('bot', '연결에 문제가 생겼어요. 잠시 후 다시 보내 주세요.\n(' + (err && err.message ? err.message : err) + ')', { error:true });
+      })
+      .askQuestion(sentName, sentTopic, text, history, !!isExample, sentCustom);
+  }
+
+  sendBtn.onclick = () => send();
+  qBox.addEventListener('keydown', e => {
+    if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); }
+  });
+
+  /* ---------- 시작 ---------- */
+  try{ customTopic = sessionStorage.getItem('lifeTechCustom') || ''; }catch(e){}
+  renderTopics();
+  addMsg('bot', '안녕하세요! 저는 **생명 기술 도우미**예요. 🌱\n위에서 주제를 고르고 궁금한 점을 물어보세요.\n**✏️ 직접 입력**을 누르면 궁금한 주제를 직접 정할 수 있어요.\n- **"자료 찾아 줘"** → 위키백과·뉴스 자료\n- **"영상 찾아 줘"** → 유튜브 영상\n- **"사진 보여 줘"** → 사진\n예시 질문을 눌러도 바로 답해 드려요!');
+  try{ userName = sessionStorage.getItem('lifeTechName') || ''; }catch(e){}
+  if(userName){ $('whoami').textContent = userName; $('modal').classList.add('hidden'); }
+  else { openModal(); }
+
+  // 서버를 미리 깨우고, 배포된 버전을 화면에 표시 (선생님 확인용)
+  try{ google.script.run.withSuccessHandler(v => { $('ver').textContent = '· ' + v; }).warmup(); }catch(e){}
+  // ⚡ 화면이 열려 있는 동안 4분마다 서버를 살짝 깨워 둠 (첫 질문이 느려지는 것 방지)
+  setInterval(() => { if(document.visibilityState === 'visible' && !busy){ try{ google.script.run.warmup(); }catch(e){} } }, 240000);
+</script>
+</body>
+</html>
