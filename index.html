@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<base target="_top">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>생명 기술 질문 챗봇</title>
 <style>
   :root{
     --green:#2f855a; --green-d:#22543d; --green-l:#e8f5ec; --mint:#f3faf5;
@@ -11,7 +12,7 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:var(--bg);color:var(--text)}
-  .app{max-width:780px;margin:0 auto;height:100vh;display:flex;flex-direction:column;background:var(--white);box-shadow:0 0 24px rgba(0,0,0,.06)}
+  .app{max-width:780px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--white);box-shadow:0 0 24px rgba(0,0,0,.06)}
 
   header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:16px 20px}
   header h1{margin:0;font-size:20px}
@@ -52,17 +53,9 @@
   .src small{display:block;color:var(--muted);font-size:11px}
 
   /* ▶️ 영상 */
-  .video{display:flex;gap:10px;align-items:center;margin:6px 0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;text-decoration:none;color:inherit}
-  .video:hover{border-color:var(--green)}
-  .video .thumb{position:relative;flex:0 0 140px;height:79px;background:#000}
-  .video .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-  .video .thumb i{position:absolute;inset:0;margin:auto;width:34px;height:24px;border-radius:7px;background:rgba(220,0,0,.9);color:#fff;font-size:12px;font-style:normal;display:flex;align-items:center;justify-content:center}
-  .video .vtxt{padding:6px 10px 6px 0;font-size:13px;line-height:1.4}
-  .video .vtxt small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
   .ytmore{display:inline-block;margin-top:4px;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #e3a5a5;color:#b42318;font-size:13px;text-decoration:none}
   .ytmore:hover{background:#fff1f1}
   .nofound{font-size:13px;color:var(--muted);margin-bottom:4px}
-  /* ▶️ 채팅 안 유튜브 플레이어 */
   .msg.bot.has-video{width:88%}
   .player{position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000;margin:4px 0 6px}
   .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -141,30 +134,68 @@
 </div>
 
 <script>
+  /* =====================================================
+   *  🔧 선생님이 바꿀 곳 — 딱 한 줄
+   *  Apps Script 웹앱 주소(…/exec)를 따옴표 안에 붙여넣으세요.
+   *  ⚠️ 이 파일에는 Gemini API 키를 절대 넣지 마세요. (GitHub는 누구나 볼 수 있어요)
+   * ===================================================== */
+  const API_URL = 'https://script.google.com/macros/s/AKfycbyvu4j9HhuqSh2rdlrX1rsliTKTeEg7EdkrjWOJxyoODmbGUqhkFsQIC1cdclkLF6VH/exec';
+
+  const PAGE_VERSION = 'GitHub판';
+
+  /* ---------- 🌐 서버(Apps Script) 부르기 ---------- */
+  // Content-Type을 일부러 지정하지 않음 → 브라우저가 text/plain으로 보내서 Apps Script와 바로 통신됨
+  async function api(action, args, timeoutMs){
+    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL)){
+      throw new Error('선생님 확인: index.html 맨 위 API_URL에 웹앱 주소(…/exec)를 넣어 주세요.');
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || 90000);
+    try{
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: action, args: args || {} }),
+        signal: ctrl.signal
+      });
+      const text = await res.text();
+      let data;
+      try{ data = JSON.parse(text); }
+      catch(e){ throw new Error('서버 응답을 읽지 못했어요. (선생님 확인: Api.gs 추가 후 "새 버전"으로 배포했는지)'); }
+      if(!data.ok) throw new Error(data.error || '서버에서 오류가 났어요.');
+      return data.result;
+    }catch(e){
+      if(e.name === 'AbortError') throw new Error('응답이 너무 오래 걸려요. 잠시 후 다시 보내 주세요.');
+      if(e instanceof TypeError) throw new Error('서버에 연결하지 못했어요. (선생님 확인: 웹앱 액세스 권한이 "모든 사용자"인지, 주소가 /exec로 끝나는지)');
+      throw e;
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
   /* ---------- 주제와 예시 질문 ---------- */
   const TOPICS = {
-    all: { label:'🧬 전체', name:'생명 기술',
-      desc:'생물의 특성과 기능을 이용해 인간에게 유용한 물질이나 생물을 만들어 내는 기술이에요.',
-      examples:['생명 기술이 무엇인가요?','4가지 생명 기술의 차이를 알려주세요.','생명 기술 최신 뉴스를 찾아 주세요.'] },
+    all:     { label:'🧬 전체', name:'생명 기술',
+               desc:'생물의 특성과 기능을 이용해 인간에게 유용한 물질이나 생물을 만들어 내는 기술이에요.',
+               examples:['생명 기술이 무엇인가요?','4가지 생명 기술의 차이를 알려주세요.','생명 기술 최신 뉴스를 찾아 주세요.'] },
     nuclear: { label:'🐑 핵 이식', name:'핵 이식 기술',
-      desc:'핵을 없앤 난자에 다른 개체의 체세포 핵을 넣어, 유전적으로 같은 개체(복제 동물)를 만드는 기술이에요.',
-      examples:['복제 양 돌리는 어떻게 만들어졌나요?','핵 이식 과정 영상을 찾아 주세요.','복제 양 돌리 사진을 보여 주세요.'] },
-    gene: { label:'🧪 유전자 재조합', name:'유전자 재조합 기술',
-      desc:'어떤 생물의 유용한 유전자를 잘라 내어 다른 생물의 DNA에 끼워 넣는 기술이에요.',
-      examples:['대장균으로 인슐린을 어떻게 만드나요?','GMO 식품은 안전한가요?','GMO 관련 최신 뉴스를 찾아 주세요.'] },
-    fusion: { label:'🥔 세포 융합', name:'세포 융합 기술',
-      desc:'서로 다른 두 종류의 세포를 하나로 합쳐 두 세포의 특징을 함께 가진 세포를 만드는 기술이에요.',
-      examples:['포마토는 어떻게 만들어졌나요?','세포 융합과 유전자 재조합은 뭐가 달라요?','세포 융합 자료를 찾아 주세요.'] },
-    tissue: { label:'🌱 조직 배양', name:'조직 배양 기술',
-      desc:'생물의 조직이나 세포 일부를 영양분이 든 배지에서 길러 새로운 개체나 조직을 얻는 기술이에요.',
-      examples:['조직 배양으로 묘목을 대량으로 만드는 방법은?','조직 배양 영상을 찾아 주세요.','조직 배양 사진을 보여 주세요.'] },
-    custom: { label:'✏️ 직접 입력', name:'직접 입력',
-      desc:'궁금한 생명 기술 주제를 직접 적어 보세요. (예: 줄기세포, 유전자 가위, 백신, 바이오 연료)',
-      examples:[] }
+               desc:'핵을 없앤 난자에 다른 개체의 체세포 핵을 넣어, 유전적으로 같은 개체(복제 동물)를 만드는 기술이에요.',
+               examples:['복제 양 돌리는 어떻게 만들어졌나요?','핵 이식 과정 영상을 찾아 주세요.','복제 양 돌리 사진을 보여 주세요.'] },
+    gene:    { label:'🧪 유전자 재조합', name:'유전자 재조합 기술',
+               desc:'어떤 생물의 유용한 유전자를 잘라 내어 다른 생물의 DNA에 끼워 넣는 기술이에요.',
+               examples:['대장균으로 인슐린을 어떻게 만드나요?','GMO 식품은 안전한가요?','GMO 관련 최신 뉴스를 찾아 주세요.'] },
+    fusion:  { label:'🥔 세포 융합', name:'세포 융합 기술',
+               desc:'서로 다른 두 종류의 세포를 하나로 합쳐 두 세포의 특징을 함께 가진 세포를 만드는 기술이에요.',
+               examples:['포마토는 어떻게 만들어졌나요?','세포 융합과 유전자 재조합은 뭐가 달라요?','세포 융합 자료를 찾아 주세요.'] },
+    tissue:  { label:'🌱 조직 배양', name:'조직 배양 기술',
+               desc:'생물의 조직이나 세포 일부를 영양분이 든 배지에서 길러 새로운 개체나 조직을 얻는 기술이에요.',
+               examples:['조직 배양으로 묘목을 대량으로 만드는 방법은?','조직 배양 영상을 찾아 주세요.','조직 배양 사진을 보여 주세요.'] },
+    custom:  { label:'✏️ 직접 입력', name:'직접 입력',
+               desc:'궁금한 생명 기술 주제를 직접 적어 보세요. (예: 줄기세포, 유전자 가위, 백신, 바이오 연료)',
+               examples:[] }
   };
 
-  // 기다리는 동안 보여 줄 안내 (서버와 같은 기준)
-  const WEB_WORDS = /찾아|검색|자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/;
+  // 기다리는 동안 보여 줄 안내 (서버 Code.gs와 같은 기준)
+  const WEB_WORDS   = /찾아|검색|자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/;
   const VIDEO_WORDS = /유튜브|youtube|영상|동영상|비디오/i;
   const PHOTO_WORDS = /사진|이미지|그림|보여\s*줘|보여\s*주/;
 
@@ -189,7 +220,7 @@
     qBox.focus();
   }
   $('start').onclick = setName;
-  $('nameInput').addEventListener('keydown', e => { if(e.key === 'Enter') setName(); });
+  $('nameInput').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.isComposing) setName(); });
   $('changeName').onclick = openModal;
 
   /* ---------- 주제 ---------- */
@@ -267,7 +298,7 @@
     return html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(<br>)+$/, '');
   }
 
-  // 🌐 찾은 웹 자료
+  // 📚 찾은 웹 자료
   function sourcesHtml(sources){
     const items = (sources || []).filter(s => safeUrl(s.url));
     if(!items.length) return '';
@@ -282,7 +313,6 @@
 
   // ▶️ 유튜브 영상 — 답변을 먼저 보여 준 뒤, 영상 칸을 따로 채움
   const VIDEO_MAX = 3;
-  // 유튜브 플레이어 주소 (개인정보 보호 모드 youtube-nocookie, 관련 영상은 같은 채널 위주)
   function embedUrl(id, autoplay){
     return 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
       '?rel=0&modestbranding=1&playsinline=1' + (autoplay ? '&autoplay=1' : '');
@@ -292,7 +322,7 @@
       (v.channel ? ' <small>· ' + esc(v.channel) + '</small>' : '') +
       link(v.url, '유튜브에서 보기 ↗', '');
   }
-  // 찾은 영상: 첫 영상은 플레이어로 바로, 나머지는 썸네일 → 누르면 플레이어에서 재생
+  // 첫 영상은 플레이어로 바로, 나머지는 썸네일 → 누르면 플레이어에서 재생
   function playerHtml(list){
     const first = list[0];
     let html = '<div class="player"><iframe src="' + embedUrl(first.id, false) + '" title="' + esc(first.title) + '"' +
@@ -311,27 +341,24 @@
     box.querySelectorAll('.vthumb').forEach(btn => {
       btn.onclick = () => {
         const v = list[Number(btn.dataset.i)];
-        box.querySelector('.player iframe').src = embedUrl(v.id, true);   // 누르면 바로 재생
+        box.querySelector('.player iframe').src = embedUrl(v.id, true);
         box.querySelector('.nowplaying').innerHTML = nowPlayingHtml(v);
         box.querySelectorAll('.vthumb').forEach(b => {
           b.classList.toggle('on', b === btn);
-          const span = b.querySelector('span');
-          span.textContent = (b === btn ? '▶ ' : '') + list[Number(b.dataset.i)].title;
+          b.querySelector('span').textContent = (b === btn ? '▶ ' : '') + list[Number(b.dataset.i)].title;
         });
       };
     });
   }
-  // 영상 칸 만들기 (처음엔 "찾는 중")
   function addVideoBox(msgEl){
     const box = document.createElement('div');
     box.className = 'box';
     box.innerHTML = '<b>▶️ 찾은 영상</b><div class="nofound">🔎 영상을 찾고 있어요…</div>';
-    const meta = msgEl.querySelector('.meta');
-    msgEl.insertBefore(box, meta || null);
+    msgEl.insertBefore(box, msgEl.querySelector('.meta') || null);
     chat.scrollTop = chat.scrollHeight;
     return box;
   }
-  // 찾은 영상 중 '썸네일이 진짜로 열리는 것'만 최대 3개 보여 주기 → 없는 영상은 안 보임
+  // 찾은 영상 중 '썸네일이 진짜로 열리는 것'만 최대 3개 보여 주기
   function fillVideoBox(box, videos, more, done){
     const list = (videos || []).filter(v => safeUrl(v.url) && safeUrl(v.thumb));
     const moreLink = safeUrl(more) ? '<div>' + link(more, '🔍 유튜브에서 더 찾아보기', 'ytmore') + '</div>' : '';
@@ -339,7 +366,7 @@
       (list.length ? '🔎 영상을 확인하고 있어요…' : '') + '</div>' + moreLink;
     const vlist = box.querySelector('.vlist'), status = box.querySelector('.vstatus');
     const ok = [];
-    let pending = list.length, finished = false;
+    let pending = 0, finished = false;
 
     function finish(){
       if(finished) return;
@@ -356,11 +383,11 @@
         status.textContent = '알맞은 영상을 바로 찾지 못했어요. 아래 버튼으로 유튜브에서 직접 찾아보세요.';
       }
       chat.scrollTop = chat.scrollHeight;
-      if(done) done(ok.map(x => x.v));
+      if(done) done(shown);
     }
     function step(){ pending--; if(pending <= 0 || ok.length >= VIDEO_MAX) finish(); }
 
-    // 확실한 영상(선생님 추천·내장 목록·유튜브 API)은 바로 보여 주고, 나머지만 썸네일로 확인
+    // 확실한 영상(선생님 추천·내장 목록·유튜브 API)은 바로, 나머지만 썸네일로 확인
     list.forEach((v, i) => { if(v.trusted && ok.length < VIDEO_MAX) ok.push({ v: v, i: i }); });
     const toCheck = ok.length >= VIDEO_MAX ? [] : list.map((v, i) => ({ v: v, i: i })).filter(x => !x.v.trusted);
     pending = toCheck.length;
@@ -368,14 +395,13 @@
     toCheck.forEach(({ v, i }) => {
       const img = new Image();
       img.onload = () => {
-        // 없는 영상은 유튜브가 120px짜리 빈 그림을 주므로 걸러 냄
         if(!finished && img.naturalWidth > 120 && ok.length < VIDEO_MAX) ok.push({ v: v, i: i });
         step();
       };
       img.onerror = step;
       img.src = v.thumb;
     });
-    setTimeout(finish, 6000);   // 썸네일이 늦어도 6초 안에는 정리
+    setTimeout(finish, 6000);
   }
 
   // 📷 사진
@@ -430,11 +456,11 @@
       return;
     }
     const sentTopic = topic, sentName = userName, sentCustom = topic === 'custom' ? customTopic : '';
+    const sentHistory = history.slice();
     addMsg('user', text);
     qBox.value = '';
     setBusy(true);
 
-    // 서버(Code.gs의 detectIntent_)와 같은 기준
     const video = VIDEO_WORDS.test(text);
     const photo = PHOTO_WORDS.test(text) && (/사진|이미지|그림/.test(text) || !video);
     const web = WEB_WORDS.test(text) && (/자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/.test(text) || (!video && !photo));
@@ -445,18 +471,18 @@
 
     const started = Date.now();
 
-    // ⚡ 영상은 답변을 기다리지 않고 '지금 바로' 같이 찾기 시작
+    // ⚡ 영상은 답변을 기다리지 않고 지금 바로 같이 찾기 시작
     const vid = { done: false, result: null, onReady: null };
     if(video){
       const ready = r => { vid.done = true; vid.result = r; if(vid.onReady) vid.onReady(r); };
-      google.script.run
-        .withSuccessHandler(r => ready(r || { videos: [] }))
-        .withFailureHandler(() => ready({ videos: [] }))
-        .findVideosFor(text, sentTopic, history.slice(), sentCustom);
+      api('videosFor', { question: text, topic: sentTopic, history: sentHistory, custom: sentCustom })
+        .then(r => ready(r || { videos: [] }))
+        .catch(() => ready({ videos: [] }));
     }
 
-    google.script.run
-      .withSuccessHandler(res => {
+    api('ask', { name: sentName, topic: sentTopic, question: text, history: sentHistory, isExample: !!isExample, custom: sentCustom })
+      .then(res => {
+        res = res || { ok: false, answer: '답을 받지 못했어요. 다시 보내 주세요.' };
         hideTyping(); setBusy(false);
         const sec = ((Date.now() - started) / 1000).toFixed(1);
         const msgEl = addMsg('bot', res.answer, {
@@ -475,10 +501,11 @@
             .concat((res.sources || []).map(s => ({ type:'웹', title:s.title, url:s.url })))
             .concat((videos || []).map(v => ({ type:'영상', title:v.title, url:v.url })))
             .concat((res.images || []).map(im => ({ type:'사진', title:im.title, url:im.page })));
-          google.script.run.saveLog(sentName, sentTopic, text, res.answer, res.ok, found, res.query || {}, sec, sentCustom);
+          api('log', { name: sentName, topic: sentTopic, question: text, answer: res.answer, ok: res.ok,
+                       found: found, query: res.query || {}, seconds: sec, custom: sentCustom }).catch(() => {});
         };
 
-        // ▶️ 영상: 이미 같이 찾고 있던 결과를 붙임 (먼저 끝났으면 바로, 아니면 끝나는 대로)
+        // ▶️ 영상: 같이 찾고 있던 결과를 붙임
         if(res.ok && res.videoQuery){
           const box = addVideoBox(msgEl);
           const more = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(res.videoQuery);
@@ -489,9 +516,8 @@
             fillVideoBox(box, r && r.videos, (r && r.more) || more, save);
           };
           const giveUp = setTimeout(() => show({ videos: [] }), 30000);
-          if(!video){   // 화면에서는 영상 질문이 아니라고 봤지만 서버가 영상 검색어를 준 경우
-            google.script.run.withSuccessHandler(show).withFailureHandler(() => show({ videos: [] }))
-              .findVideos(res.videoQuery, sentTopic);
+          if(!video){
+            api('videos', { query: res.videoQuery, topic: sentTopic }).then(show).catch(() => show({ videos: [] }));
           } else if(vid.done){
             show(vid.result);
           } else {
@@ -501,11 +527,10 @@
           save([]);
         }
       })
-      .withFailureHandler(err => {
+      .catch(err => {
         hideTyping(); setBusy(false);
         addMsg('bot', '연결에 문제가 생겼어요. 잠시 후 다시 보내 주세요.\n(' + (err && err.message ? err.message : err) + ')', { error:true });
-      })
-      .askQuestion(sentName, sentTopic, text, history, !!isExample, sentCustom);
+      });
   }
 
   sendBtn.onclick = () => send();
@@ -521,10 +546,17 @@
   if(userName){ $('whoami').textContent = userName; $('modal').classList.add('hidden'); }
   else { openModal(); }
 
-  // 서버를 미리 깨우고, 배포된 버전을 화면에 표시 (선생님 확인용)
-  try{ google.script.run.withSuccessHandler(v => { $('ver').textContent = '· ' + v; }).warmup(); }catch(e){}
-  // ⚡ 화면이 열려 있는 동안 4분마다 서버를 살짝 깨워 둠 (첫 질문이 느려지는 것 방지)
-  setInterval(() => { if(document.visibilityState === 'visible' && !busy){ try{ google.script.run.warmup(); }catch(e){} } }, 240000);
+  // 서버를 미리 깨우고, 연결되면 버전을 화면에 표시 (선생님 확인용)
+  api('warmup', {}, 30000)
+    .then(v => { $('ver').textContent = '· ' + v + ' · ' + PAGE_VERSION; })
+    .catch(err => {
+      $('ver').textContent = '· 서버 연결 안 됨';
+      addMsg('bot', '⚠️ 서버에 연결되지 않았어요.\n(' + err.message + ')', { error:true });
+    });
+  // ⚡ 화면이 열려 있는 동안 4분마다 서버를 살짝 깨워 둠
+  setInterval(() => {
+    if(document.visibilityState === 'visible' && !busy) api('warmup', {}, 30000).catch(() => {});
+  }, 240000);
 </script>
 </body>
 </html>
