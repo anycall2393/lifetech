@@ -738,6 +738,7 @@
   async function send(text, isExample){
     text = (text || qBox.value).trim();
     if(!text || busy) return;
+    if(text === '/점검'){ qBox.value = ''; selfTest(); return; }   // 🧑‍🏫 선생님용 속도 점검
     if(!userName){ openModal(); return; }
     if(topic === 'custom' && !customTopic){
       addBotMsg('✏️ 먼저 위 입력란에 **주제**를 적고 [정하기]를 눌러 주세요.', { error:true });
@@ -811,6 +812,34 @@
     api('log', { name: sentName, topic: sentTopic, question: text, answer: res.answer, ok: res.ok, found: list,
                  query: { web: want.web ? query : '', video: want.video ? query : '', photo: found.photoQuery },
                  seconds: sec, custom: sentCustom }).catch(() => {});
+  }
+
+  /* ---------- 🧑‍🏫 속도 점검: 입력창에 /점검 을 보내면 실제 주소로 각 기능이 되는지와 걸린 시간을 보여 줌 ---------- */
+  async function selfTest(){
+    setBusy(true);
+    const m = addBotMsg(null, { typing: '실제 서버로 점검하고 있어요… (10초쯤 걸려요)' });
+    const lines = ['**🧑‍🏫 속도 점검** (화면 ' + PAGE_VERSION + ')'];
+    const run = async (label, fn) => {
+      const t = performance.now();
+      let note;
+      try{ note = await fn(); }catch(e){ note = '❌ ' + (e && e.message ? e.message : e); }
+      lines.push('- ' + label + ': ' + ((performance.now() - t) / 1000).toFixed(1) + '초 · ' + note);
+    };
+    await run('서버 연결', async () => { const v = await api('warmup', {}, 30000); return '✅ 서버 ' + ((v && v.version) || v) + ' · 선생님 추천 영상 ' + ((v && v.teacherVideos) || []).length + '개'; });
+    await run('위키백과 (브라우저 직접)', async () => { const n = readWiki(await getJson(wikiUrl('조직 배양'), 5000)).length; return n ? '✅ ' + n + '개' : '❌ 못 찾음'; });
+    await run('사진 (브라우저 직접)', async () => { const n = (await commonsSearch('Dolly the sheep')).length; return n ? '✅ ' + n + '장' : '❌ 못 찾음'; });
+    await run('내장 영상 ' + VIDEOS.length + '개 확인', async () => {
+      const all = VIDEOS.map(r => makeVideo(r[2], r[3], r[4], false));
+      all.forEach(v => { v.trusted = false; });
+      const ok = await aliveVideos(all);
+      const dead = all.filter(v => !ok.includes(v)).map(v => v.id);
+      return dead.length ? '⚠️ 안 열리는 영상 ' + dead.length + '개: ' + dead.join(', ') : '✅ 모두 열림';
+    });
+    await run('AI 답변 (새 질문)', async () => { const r = await api('ask', { name: '점검', topic: 'all', question: '무추의 특징을 알려 주세요 ' + Date.now() % 1000 + '번', history: [] }); return r.ok ? '✅' + (r.cached ? ' (저장된 답)' : '') : '❌ ' + r.answer; });
+    await run('AI 답변 + 뉴스', async () => { const r = await api('ask', { name: '점검', topic: 'gene', question: 'GMO 관련 최신 뉴스를 찾아 주세요.', history: [], query: 'GMO', wiki: [] }); return r.ok ? '✅ 뉴스 ' + (r.sources || []).length + '개' + (r.cached ? ' (저장된 답)' : '') : '❌ ' + r.answer; });
+    lines.push('', '이 내용을 그대로 복사해 Claude에게 보여 주면 어디가 느린지 바로 알 수 있어요.');
+    m.ans.innerHTML = formatAnswer(lines.join('\n'));
+    setBusy(false); scrollDown();
   }
 
   sendBtn.onclick = () => send();
