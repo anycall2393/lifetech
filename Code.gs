@@ -1,6 +1,6 @@
 /**
  * ===============================================
- * 🧬 생명 기술 질문 챗봇 v11 (GitHub판 서버)
+ * 🧬 생명 기술 질문 챗봇 v12 (GitHub판 서버)
  *    중3 기술 6단원 · 생명 기술의 이해 (Google Apps Script + Gemini)
  * ===============================================
  *
@@ -12,9 +12,9 @@
  *   ⚠️ 키가 들어 있는 이 파일을 GitHub에 올리지 마세요. (GitHub에는 키가 빈 파일만)
  *      '초기설정'을 한 번 실행하면 키가 스크립트 속성에 저장되어, 그 뒤로는 코드에서 키를 지워도 됩니다.
  *
- * ⚡ v11 속도 개선 (서버가 하는 일을 크게 줄였어요)
+ * ⚡ v12 속도 개선 (서버가 하는 일을 크게 줄였어요)
  *   - 영상(내장 목록·선생님 추천) / 사진 / 위키백과 / 포털 검색 → 학생 브라우저가 직접 찾음 (서버를 거치지 않음)
- *   - 서버는 질문 1개에 'AI 답변' 1번만 처리 (v10은 답변·영상·기록 3번)
+ *   - 서버는 질문 1개에 'AI 답변' 1번만 처리 (예전에는 답변·영상·기록 3번)
  *   - 뉴스 검색과 AI 답변을 동시에 요청
  *   - 수업 낱말이 들어 있는 질문은 반 전체가 같은 답을 6시간 동안 바로 받음 (저장된 답)
  *   - 사용량 초과(429)면 기다리지 않고 곧바로 다른 모델로
@@ -24,7 +24,7 @@
  *    코드를 바꾼 뒤에는 반드시 [배포 → 배포 관리 → 연필(수정) → 버전: 새 버전 → 배포]
  */
 
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 
 // ① AI 스튜디오 API 키
 const GEMINI_API_KEY = '여기에_AI_스튜디오_API_키를_붙여넣으세요';
@@ -173,7 +173,7 @@ const ACTIONS = {
   warmup: warmup_,
   ask: ask_,
   videos: videos_,
-  videosFor: function (a) {   // 예전 화면(v10 GitHub판)과도 맞도록
+  videosFor: function (a) {   // 예전 화면(v11 GitHub판)과도 맞도록
     const T = topicInfo_(a.topic, a.custom);
     return videos_({ query: makeQuery_(String(a.question || '').slice(0, 500), T, a.history), topic: T.key });
   },
@@ -806,7 +806,7 @@ function log_(a) {
       a.seconds ? Number(a.seconds) : ''
     ]);
 
-    // 검색기록: 찾은 자료를 한 번에 묶어서 쓰기 (v10은 자료 1개마다 따로 써서 느렸음)
+    // 검색기록: 찾은 자료를 한 번에 묶어서 쓰기 (예전에는 자료 1개마다 따로 써서 느렸음)
     if (found.length) {
       const rows = found.map(function (f) {
         const kw = f.type === '영상' ? query.video : f.type === '사진' ? query.photo : query.web;
