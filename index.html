@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>생명 기술 질문 챗봇</title>
+<!-- ⚡ 자주 쓰는 서버와 미리 연결해 둠 -->
+<link rel="preconnect" href="https://script.google.com">
+<link rel="preconnect" href="https://script.googleusercontent.com">
+<link rel="preconnect" href="https://ko.wikipedia.org">
+<link rel="preconnect" href="https://commons.wikimedia.org">
+<link rel="preconnect" href="https://i.ytimg.com">
 <style>
   :root{
     --green:#2f855a; --green-d:#22543d; --green-l:#e8f5ec; --mint:#f3faf5;
@@ -44,6 +50,15 @@
   .msg .tag{display:block;font-size:11px;opacity:.75;margin-bottom:2px}
   .msg ul{margin:6px 0;padding-left:20px}
   .meta{margin-top:6px;font-size:11px;color:var(--muted)}
+  .meta:empty{display:none}
+
+  /* 답을 쓰는 동안 (말풍선 안) */
+  .typing{display:flex;gap:4px;align-items:center;padding:4px 0}
+  .typing span{width:7px;height:7px;border-radius:50%;background:#9aa8a0;animation:b 1s infinite}
+  .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+  .typing em{font-style:normal;font-size:12px;color:var(--muted);margin-left:6px}
+  @keyframes b{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-5px);opacity:1}}
+  @media (prefers-reduced-motion: reduce){ .typing span{animation:none} }
 
   /* 📚 찾은 자료 */
   .box{margin-top:10px;padding-top:8px;border-top:1px dashed #c9d4cd}
@@ -51,11 +66,17 @@
   .src{display:block;padding:5px 8px;margin:3px 0;background:#fff;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;font-size:13px;line-height:1.4}
   .src:hover{border-color:var(--green)}
   .src small{display:block;color:var(--muted);font-size:11px}
+  .nofound{font-size:13px;color:var(--muted);margin:4px 0}
+  .nofound:empty{display:none}
+
+  /* 🔎 포털에서 더 찾아보기 */
+  .portal{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .portal a{padding:4px 10px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--text);font-size:12px;text-decoration:none;white-space:nowrap}
+  .portal a:hover{border-color:var(--green);color:var(--green-d)}
 
   /* ▶️ 영상 */
   .ytmore{display:inline-block;margin-top:4px;padding:6px 12px;border-radius:999px;background:#fff;border:1px solid #e3a5a5;color:#b42318;font-size:13px;text-decoration:none}
   .ytmore:hover{background:#fff1f1}
-  .nofound{font-size:13px;color:var(--muted);margin-bottom:4px}
   .msg.bot.has-video{width:88%}
   .player{position:relative;width:100%;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000;margin:4px 0 6px}
   .player iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -77,12 +98,6 @@
   .gallery figcaption{padding:5px 8px;font-size:12px;line-height:1.35}
   .gallery figcaption small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
   .credit{font-size:11px;color:var(--muted);margin-top:6px}
-
-  .typing{align-self:flex-start;background:#f2f4f3;border-radius:14px;padding:12px 16px;display:flex;gap:4px;align-items:center}
-  .typing span{width:7px;height:7px;border-radius:50%;background:#9aa8a0;animation:b 1s infinite}
-  .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
-  .typing em{font-style:normal;font-size:12px;color:var(--muted);margin-left:6px}
-  @keyframes b{0%,80%,100%{transform:translateY(0);opacity:.5}40%{transform:translateY(-5px);opacity:1}}
 
   .inputbar{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#fff}
   .inputbar textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px;font-family:inherit;height:48px;max-height:120px}
@@ -143,7 +158,15 @@
 </script>
 
 <script>
-  const PAGE_VERSION = 'GitHub판';
+  /* =====================================================
+   * 🧬 생명 기술 질문 챗봇 v11 (GitHub판 화면)
+   *
+   * ⚡ 빠르게 만든 방법
+   *   - 영상(내장 목록·선생님 추천) · 사진 · 위키백과 · 포털 검색은 이 화면이 직접 찾아요. (서버를 거치지 않음)
+   *   - 서버(Apps Script)는 AI 답변만 만들어요. 답을 기다리는 동안 영상·사진·자료가 먼저 떠요.
+   *   - 예시 질문은 미리 써 둔 교과서 답(FAQ)으로 바로 보여 줘요.
+   * ===================================================== */
+  const PAGE_VERSION = 'v11';
 
   // 주소 정리: 앞뒤 공백·따옴표가 섞여 들어가도 괜찮게
   const SERVER = (typeof API_URL === 'string' ? API_URL : '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
@@ -159,7 +182,7 @@
       throw new Error('선생님 확인: index.html의 API_URL에 웹앱 주소(https://script.google.com/…/exec)를 넣어 주세요.');
     }
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs || 90000);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || 60000);
     try{
       const res = await fetch(SERVER, {
         method: 'POST',
@@ -181,21 +204,35 @@
     }
   }
 
+  // 위키백과·위키미디어처럼 브라우저에서 바로 부를 수 있는 곳 (실패하면 null)
+  async function getJson(url, timeoutMs){
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || 4000);
+    try{
+      const res = await fetch(url, { signal: ctrl.signal });
+      return res.ok ? await res.json() : null;
+    }catch(e){ return null; }
+    finally{ clearTimeout(timer); }
+  }
+  function toQuery(params){
+    return Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  }
+
   /* ---------- 주제와 예시 질문 ---------- */
   const TOPICS = {
-    all:     { label:'🧬 전체', name:'생명 기술',
+    all:     { label:'🧬 전체', name:'생명 기술', query:'생명 기술', wiki:'생명공학', photo:'biotechnology laboratory',
                desc:'생물의 특성과 기능을 이용해 인간에게 유용한 물질이나 생물을 만들어 내는 기술이에요.',
                examples:['생명 기술이 무엇인가요?','4가지 생명 기술의 차이를 알려주세요.','생명 기술 최신 뉴스를 찾아 주세요.'] },
-    nuclear: { label:'🐑 핵 이식', name:'핵 이식 기술',
+    nuclear: { label:'🐑 핵 이식', name:'핵 이식 기술', query:'핵 이식 기술', wiki:'체세포 핵 이식', photo:'Dolly the sheep',
                desc:'핵을 없앤 난자에 다른 개체의 체세포 핵을 넣어, 유전적으로 같은 개체(복제 동물)를 만드는 기술이에요.',
                examples:['복제 양 돌리는 어떻게 만들어졌나요?','핵 이식 과정 영상을 찾아 주세요.','복제 양 돌리 사진을 보여 주세요.'] },
-    gene:    { label:'🧪 유전자 재조합', name:'유전자 재조합 기술',
+    gene:    { label:'🧪 유전자 재조합', name:'유전자 재조합 기술', query:'유전자 재조합 기술', wiki:'유전자 재조합', photo:'genetically modified crop',
                desc:'어떤 생물의 유용한 유전자를 잘라 내어 다른 생물의 DNA에 끼워 넣는 기술이에요.',
                examples:['대장균으로 인슐린을 어떻게 만드나요?','GMO 식품은 안전한가요?','GMO 관련 최신 뉴스를 찾아 주세요.'] },
-    fusion:  { label:'🥔 세포 융합', name:'세포 융합 기술',
+    fusion:  { label:'🥔 세포 융합', name:'세포 융합 기술', query:'세포 융합 기술', wiki:'세포 융합', photo:'pomato',
                desc:'서로 다른 두 종류의 세포를 하나로 합쳐 두 세포의 특징을 함께 가진 세포를 만드는 기술이에요.',
                examples:['포마토는 어떻게 만들어졌나요?','세포 융합과 유전자 재조합은 뭐가 달라요?','세포 융합 자료를 찾아 주세요.'] },
-    tissue:  { label:'🌱 조직 배양', name:'조직 배양 기술',
+    tissue:  { label:'🌱 조직 배양', name:'조직 배양 기술', query:'조직 배양 기술', wiki:'조직 배양', photo:'plant tissue culture',
                desc:'생물의 조직이나 세포 일부를 영양분이 든 배지에서 길러 새로운 개체나 조직을 얻는 기술이에요.',
                examples:['조직 배양으로 묘목을 대량으로 만드는 방법은?','조직 배양 영상을 찾아 주세요.','조직 배양 사진을 보여 주세요.'] },
     custom:  { label:'✏️ 직접 입력', name:'직접 입력',
@@ -203,19 +240,103 @@
                examples:[] }
   };
 
-  // 기다리는 동안 보여 줄 안내 (서버 Code.gs와 같은 기준)
+  /* ---------- ⚡ 교과서 바로 답 (예시 질문은 서버를 기다리지 않고 0초에) ---------- */
+  const FAQ_LIST = [
+    ['생명 기술이 무엇인가요?',
+     '**생명 기술**은 생물의 특성과 기능을 이용해 사람에게 유용한 물질이나 생물을 만들어 내는 기술이에요. 식량, 의료, 환경, 에너지 분야에 널리 쓰여요. 예를 들어 대장균으로 당뇨병 치료에 쓰는 **인슐린**을 만들고, 조직 배양으로 병 없는 씨감자를 많이 길러 내요. 수업에서는 **핵 이식, 유전자 재조합, 세포 융합, 조직 배양** 네 가지를 배워요.\n\n🤔 생각해 보기: 내 주변에서 생명 기술로 만든 것은 무엇이 있을까요?'],
+    ['4가지 생명 기술의 차이를 알려주세요.',
+     '네 가지는 "무엇을 옮기거나 합치느냐"가 달라요.\n- **핵 이식**: 핵을 없앤 난자에 체세포의 핵을 넣어 **똑같은 개체**를 만들어요. (복제 양 돌리)\n- **유전자 재조합**: **필요한 유전자만** 잘라 다른 생물의 DNA에 끼워 넣어요. (인슐린을 만드는 대장균)\n- **세포 융합**: 서로 다른 두 **세포를 통째로** 합쳐요. (포마토)\n- **조직 배양**: 조직이나 세포 **일부를 배지에서 길러** 수를 늘려요. (씨감자, 난초)\n\n🤔 생각해 보기: 병에 강한 딸기 묘목을 많이 얻고 싶다면 어떤 기술이 알맞을까요?'],
+    ['복제 양 돌리는 어떻게 만들어졌나요?',
+     '돌리는 **핵 이식 기술**로 태어났어요. 먼저 한 양의 난자에서 **핵을 없애고**, 다른 양의 젖샘 세포(체세포)에서 꺼낸 **핵을 넣었어요**. 이 난자를 자라게 한 뒤 대리모 양의 자궁에 넣어 1996년 영국에서 돌리가 태어났어요. 그래서 돌리는 핵을 준 양과 **유전적으로 같아요**.\n\n🤔 생각해 보기: 복제 동물을 만들 때 어떤 윤리적 문제를 생각해야 할까요?'],
+    ['대장균으로 인슐린을 어떻게 만드나요?',
+     '**유전자 재조합 기술**을 써요. 사람의 **인슐린 유전자**를 잘라 내어 대장균의 DNA(플라스미드)에 끼워 넣고, 이 DNA를 대장균에 다시 넣어요. 대장균은 아주 빨리 늘어나기 때문에 **인슐린을 많이** 만들 수 있고, 이것을 모아 당뇨병 치료에 써요.\n\n🤔 생각해 보기: 왜 하필 대장균처럼 빨리 자라는 생물을 이용할까요?'],
+    ['GMO 식품은 안전한가요?',
+     '**GMO**는 유전자 재조합 기술로 만든 생물이에요. 해충에 강한 옥수수, 제초제에 강한 콩처럼 수확량을 늘리고 농약을 줄이는 **장점**이 있어요. 판매되는 GMO 식품은 나라에서 안전성 심사를 거치지만, 오랫동안 먹었을 때의 영향이나 **생태계 교란**을 걱정하는 의견도 있어요. 그래서 우리나라는 소비자가 알고 고를 수 있도록 **GMO 표시제**를 두고 있어요.\n\n🤔 생각해 보기: 내가 식품을 고른다면 GMO 표시를 보고 어떻게 결정할까요?'],
+    ['포마토는 어떻게 만들어졌나요?',
+     '포마토는 **세포 융합 기술**로 만들었어요. **감자** 세포와 **토마토** 세포의 세포벽을 없앤 뒤, 두 세포를 하나로 합쳐 잡종 세포를 만들어요. 이 세포를 배지에서 길러 식물로 키우면 땅 위에는 토마토, 땅속에는 감자가 열리는 식물이 돼요.\n\n🤔 생각해 보기: 두 식물의 좋은 점만 얻으려 했는데, 실제로는 어떤 어려움이 있었을까요?'],
+    ['세포 융합과 유전자 재조합은 뭐가 달라요?',
+     '옮기는 **크기**가 달라요. **유전자 재조합**은 필요한 **유전자 하나**만 잘라 다른 생물의 DNA에 넣어요. 사람 인슐린 유전자를 넣은 대장균이 그 예예요. **세포 융합**은 서로 다른 두 **세포를 통째로** 합쳐서 두 세포의 특징을 함께 가진 세포를 만들어요. 감자와 토마토를 합친 포마토가 그 예예요.\n\n🤔 생각해 보기: 원하는 특징 하나만 정확히 얻고 싶다면 어느 기술이 더 알맞을까요?'],
+    ['조직 배양으로 묘목을 대량으로 만드는 방법은?',
+     '식물의 **생장점 같은 조직 일부**를 떼어 내어 깨끗이 소독한 뒤, 영양분이 든 **배지**에 올려 길러요. 세포가 늘어나 덩어리가 되고, 여기서 뿌리와 줄기가 나오면 작은 식물로 자라요. 이것을 나누어 다시 기르면 **똑같은 묘목을 아주 많이** 얻을 수 있어요. 바이러스 없는 씨감자와 딸기 묘목을 이렇게 만들어요.\n\n🤔 생각해 보기: 유전적으로 똑같은 식물만 넓게 심으면 어떤 문제가 생길 수 있을까요?']
+  ];
+  function norm(s){ return String(s || '').replace(/[\s?？!.~,]/g, '').toLowerCase(); }
+  const FAQ = {};
+  FAQ_LIST.forEach(x => { FAQ[norm(x[0])] = x[1]; });
+
+  /* ---------- ▶️ 내장 영상 목록 (유튜브 검색으로 확인한 실제 교육 영상) ----------
+   * [키워드(정규식), 주제키, 영상ID, 제목, 채널] — 지워진 영상은 화면이 자동으로 숨겨요.
+   * 영상을 더 넣고 싶으면 '영상목록' 시트(선생님 추천)에 적으면 가장 먼저 나와요. */
+  const VIDEOS = [
+    // 핵 이식
+    [/핵\s*이식|핵\s*치환|체세포|복제|돌리|스너피/, 'nuclear', 'Haftwo9opR8', '복제 동물, 어떤 기술로 만들까? 세계 최초의 복제양 돌리의 탄생 과정', 'EBS 고지식'],
+    [/핵\s*이식|핵\s*치환|체세포|복제/, 'nuclear', 'Az5oUIYYh-c', "'6번째 날' 속 복제인간의 비밀! 체세포 복제가 궁금해", 'BIO 영화 함께 BIO'],
+    [/핵\s*치환|체세포|복제|원숭이/, 'nuclear', 'AWr851jlgzI', "중국, 세계 첫 '체세포핵치환' 원숭이 복제", 'YTN'],
+    [/복제|돌리|건강/, 'nuclear', 'v9CFEEdqSGM', '복제동물은 아프다? "제2의 돌리, 매우 건강"', ''],
+    // 유전자 재조합
+    [/유전자\s*재조합|재조합|인슐린|대장균/, 'gene', '0Kg49qfuLlY', '유전자 재조합 - 개념편 (재조합 기술의 원리 및 예)', ''],
+    [/유전자\s*재조합|재조합/, 'gene', 'ORkqlanGDHw', '유전자 재조합 기술', ''],
+    [/유전자\s*재조합|재조합|육종|품종/, 'gene', 'kU9hhtnorfM', '육종 개량과 유전자재조합기술의 차이점은?', 'YTN 사이언스'],
+    [/gmo|유전자\s*변형|유전자\s*재조합|식품/i, 'gene', 'YJKmoaexRgk', '유전자재조합식품, 알고 먹자!', 'YTN 사이언스'],
+    [/gmo|유전자\s*변형|안전/i, 'gene', '_q4a8dnEMAw', 'GMO, 안전한가 유해한가? 끝없는 논란의 진실', 'YTN 사이언스'],
+    [/gmo|유전자\s*변형|유전자\s*편집/i, 'gene', 'MQzykG-fSxY', 'GMO에 대한 오해와 진실 (다큐S프라임)', 'YTN 사이언스'],
+    // 세포 융합
+    [/세포\s*융합|융합|단일\s*클론|항체|포마토|무추/, 'fusion', 'vpIROq2bSNo', '세포 융합 기술 (단일클론 항체)', ''],
+    // 조직 배양
+    [/조직\s*배양|배양|씨감자|무병|묘목/, 'tissue', 'RB1KFIn596Q', '미래 먹거리 해결! 식물 조직배양 집중탐구', '뿌농의 기술'],
+    [/조직\s*배양|배양|배지/, 'tissue', 'JZOF0WZ6J2w', '공공기관이 알려주는 조직배양 프로세스 A to Z', ''],
+    [/조직\s*배양|배양/, 'tissue', '1oVV9GgJrmg', '조직배양의 모든 것', '농업기술실용화재단'],
+    [/조직\s*배양|배양|약용|작물/, 'tissue', 'eT1MFHOchX0', '약용작물 조직배양 기술로… 국산 보급 확대', 'KBS'],
+    // 생명 기술 전반 · 더 알아보기
+    [/생명\s*기술|생명\s*공학|바이오|미래/, 'all', 's6oZ23PN7eo', '세상을 뒤바꿀 미래 바이오 기술 한 방 정리', '국가생명공학정책연구센터 X 안될과학'],
+    [/생명\s*기술|생명\s*공학/, 'all', 'c9ANz0VMOjU', '생명공학기술에 대해 얼마나 알고 있나요?', ''],
+    [/생명\s*기술|생명\s*공학|유망|미래/, 'all', 'FkzstVK_0yI', '미래를 이끌 10대 바이오 미래유망기술은?', '한국생명공학연구원 (인사이드KRIBB)'],
+    [/줄기\s*세포|장기/, 'extra', 'DkqLGjEMRBU', '전분화능 줄기세포가 보여주는 신비한 현상', '한국생명공학연구원'],
+    [/유전자\s*가위|유전자\s*편집|크리스퍼|crispr/i, 'extra', 'B_pezwW5NLc', '상용화 임박한 유전자 가위 기술, 윤리적 문제는? (다큐S프라임)', 'YTN 사이언스'],
+    [/유전자\s*가위|유전자\s*편집|크리스퍼|crispr/i, 'extra', 'jkLoTdQ5L7E', '안전과 함께하는 연구이야기, 유전자편집기술편', '']
+  ];
+  const VIDEO_MAX = 3;
+
+  /* ---------- 어떤 검색을 켤지 정하는 말 (서버 Code.gs와 같은 기준) ---------- */
   const WEB_WORDS   = /찾아|검색|자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/;
+  const WEB_NAMED   = /자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/;
   const VIDEO_WORDS = /유튜브|youtube|영상|동영상|비디오/i;
   const PHOTO_WORDS = /사진|이미지|그림|보여\s*줘|보여\s*주/;
+  const PHOTO_NAMED = /사진|이미지|그림/;
+  const BIO_TERMS   = /생명|핵|이식|복제|돌리|스너피|유전자|재조합|gmo|세포|융합|포마토|무추|항체|클론|조직|배양|씨감자|딸기|난초|피부|인슐린|대장균|dna|배지|바이오|생물/i;
+
+  // 위키백과에서 함께 찾아볼 낱말 (위에서부터 먼저 맞는 것)
+  const WIKI_TERMS = [
+    [/돌리|복제\s*양/, '복제 양 돌리'], [/스너피|복제\s*개/, '스너피'], [/핵\s*이식|핵\s*치환|체세포/, '체세포 핵 이식'],
+    [/인슐린/, '인슐린'], [/대장균/, '대장균'], [/gmo|유전자\s*변형/i, '유전자 변형 생물'],
+    [/유전자\s*재조합|재조합/, '유전자 재조합'], [/포마토/, '포마토'], [/단일\s*클론|항체/, '단일클론항체'],
+    [/세포\s*융합|융합/, '세포 융합'], [/조직\s*배양|배양/, '조직 배양'], [/복제/, '생물 복제']
+  ];
+  // 사진 검색어 (위키미디어는 영어 검색이 정확)
+  const PHOTO_TERMS = [
+    [/씨감자|감자\s*조직/, 'potato tissue culture'], [/딸기/, 'strawberry tissue culture'], [/난초/, 'orchid tissue culture'],
+    [/인공\s*피부/, 'artificial skin'], [/조직\s*배양|배양/, 'plant tissue culture'], [/배지|페트리/, 'petri dish agar'],
+    [/돌리|복제\s*양/, 'Dolly the sheep'], [/스너피|복제\s*개/, 'Snuppy cloned dog'], [/핵\s*이식|체세포/, 'somatic cell nuclear transfer'],
+    [/복제/, 'cloning animal'], [/인슐린/, 'insulin'], [/대장균/, 'Escherichia coli'], [/옥수수/, 'Bt corn'],
+    [/gmo|유전자\s*변형/i, 'genetically modified crop'], [/유전자\s*가위|크리스퍼|crispr/i, 'CRISPR'],
+    [/유전자\s*재조합|재조합/, 'recombinant DNA'], [/포마토/, 'pomato'], [/단일\s*클론|항체/, 'monoclonal antibody'],
+    [/세포\s*융합|융합/, 'cell fusion'], [/줄기\s*세포/, 'stem cell'], [/백신/, 'vaccine'],
+    [/dna|디엔에이/i, 'DNA double helix'], [/실험실|연구실/, 'biotechnology laboratory']
+  ];
+  function pick(list, text, fallback){
+    for(const row of list) if(row[0].test(text)) return row[1];
+    return fallback;
+  }
 
   let userName = '';
   let topic = 'all';
   let history = [];
   let busy = false;
   let customTopic = '';
+  let serverInfo = { version: '', teacherVideos: [], yt: false, moreVideos: true };
 
   const $ = id => document.getElementById(id);
   const chat = $('chat'), qBox = $('q'), sendBtn = $('send');
+  function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
 
   /* ---------- 이름 ---------- */
   function openModal(){ $('modal').classList.remove('hidden'); $('nameInput').value = userName; setTimeout(() => $('nameInput').focus(), 50); }
@@ -235,6 +356,14 @@
   /* ---------- 주제 ---------- */
   function topicLabel(){
     return topic === 'custom' && customTopic ? '✏️ ' + customTopic : TOPICS[topic].label;
+  }
+  // 지금 고른 주제 정보 (검색어·사진 검색어 포함)
+  function topicInfo(){
+    if(topic === 'custom' && customTopic){
+      return { key:'custom', custom:customTopic, query:customTopic, wiki:customTopic, photo:'' };
+    }
+    const t = TOPICS[topic === 'custom' ? 'all' : topic];
+    return { key: topic === 'custom' ? 'all' : topic, custom:'', query:t.query, wiki:t.wiki, photo:t.photo };
   }
   function setCustom(v){
     v = String(v || '').replace(/[<>\[\]{}"'`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
@@ -282,6 +411,41 @@
     });
   }
 
+  /* ---------- 🔤 검색어 만들기 ---------- */
+  function related(text, T){
+    text = String(text || '');
+    return BIO_TERMS.test(text) || !!(T.custom && text.replace(/\s/g, '').includes(T.custom.replace(/\s/g, '')));
+  }
+  function cleanQuery(text){
+    return String(text || '')
+      .replace(/유튜브|youtube|동영상|영상|비디오|사진|이미지|그림|자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|인터넷|웹/gi, ' ')
+      .replace(/찾아\s*(줘|주세요|줄래|봐|봐요)?|보여\s*(줘|주세요|줄래)?|알려\s*(줘|주세요)?|검색해?\s*(줘|주세요)?|설명\S*/g, ' ')
+      .replace(/못\s*찾\S*|왜|어떻게|무엇|뭐|뭔가요|인가요|있나요|없나요|거야|관련(된)?|있으면|좀|주세요|해\s*줘|에\s*대한|대한|있는/g, ' ')
+      .replace(/(을|를|이랑|하고|에서)(?=\s|$)/g, ' ')
+      .replace(/[?？!.~,"'()]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  // "핵이식 기술 과정 찾아줘" → "핵이식 기술 과정" / 수업 낱말이 없으면 바로 앞 질문 → 없으면 주제
+  function makeQuery(question, T, hist){
+    let q = cleanQuery(question);
+    if(!related(q, T)){
+      for(let i = hist.length - 1; i >= 0; i--){
+        const h = hist[i];
+        if(h && h.role === 'user' && related(h.text, T)){ q = cleanQuery(h.text); break; }
+      }
+    }
+    if(!related(q, T)) return T.query;
+    const core = T.query.replace(/ 기술$/, '');
+    if(T.key !== 'all' && !q.replace(/\s/g, '').includes(core.replace(/\s/g, ''))) q = core + ' ' + q;
+    return q.slice(0, 60);
+  }
+  function detectIntent(text){
+    const video = VIDEO_WORDS.test(text);
+    const photo = PHOTO_WORDS.test(text) && (PHOTO_NAMED.test(text) || !video);
+    const web = WEB_WORDS.test(text) && (WEB_NAMED.test(text) || (!video && !photo));
+    return { web: web, video: video, photo: photo };
+  }
+
   /* ---------- 화면 그리기 ---------- */
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -307,21 +471,129 @@
     return html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(<br>)+$/, '');
   }
 
-  // 📚 찾은 웹 자료
-  function sourcesHtml(sources){
+  function addUserMsg(text){
+    const d = document.createElement('div');
+    d.className = 'msg user';
+    d.innerHTML = '<span class="tag">' + esc(topicLabel()) + '</span>' + esc(text).replace(/\n/g, '<br>');
+    chat.appendChild(d); scrollDown();
+  }
+  // 도우미 말풍선: 답(ans) · 자료(src) · 영상(vid) · 사진(img) · 포털(portal) · 걸린 시간(meta) 칸을 미리 만들어 둠
+  function addBotMsg(text, opts){
+    opts = opts || {};
+    const d = document.createElement('div');
+    d.className = 'msg bot' + (opts.error ? ' error' : '');
+    d.innerHTML = '<div class="ans"></div><div class="src-slot"></div><div class="vid-slot"></div><div class="img-slot"></div><div class="portal-slot"></div><div class="meta"></div>';
+    const m = { el: d };
+    ['ans', 'src-slot', 'vid-slot', 'img-slot', 'portal-slot', 'meta'].forEach(c => { m[c.replace('-slot', '')] = d.querySelector('.' + c); });
+    if(text != null) m.ans.innerHTML = formatAnswer(text);
+    else m.ans.innerHTML = '<div class="typing"><span></span><span></span><span></span><em>' + esc(opts.typing || '답을 쓰고 있어요…') + '</em></div>';
+    chat.appendChild(d); scrollDown();
+    return m;
+  }
+  function setBusy(v){ busy = v; sendBtn.disabled = v; sendBtn.textContent = v ? '생각 중…' : '보내기'; }
+
+  /* ---------- 🔎 포털에서 더 찾아보기 (바로 만들어지는 링크) ---------- */
+  function renderPortal(m, query){
+    const q = encodeURIComponent(query);
+    const sites = [
+      ['네이버', 'https://search.naver.com/search.naver?query=' + q],
+      ['다음', 'https://search.daum.net/search?q=' + q],
+      ['구글', 'https://www.google.com/search?q=' + q],
+      ['🖼 이미지', 'https://search.naver.com/search.naver?where=image&query=' + q],
+      ['▶ 유튜브', 'https://www.youtube.com/results?search_query=' + q]
+    ];
+    m.portal.innerHTML = '<div class="box"><b>🔎 포털에서 더 찾아보기 · ' + esc(query) + '</b><div class="portal">' +
+      sites.map(s => link(s[1], esc(s[0]), '')).join('') + '</div></div>';
+  }
+
+  /* ---------- 📚 위키백과 (브라우저가 직접) + 뉴스 (서버가 답과 함께) ---------- */
+  function readWiki(data){
+    const pages = data && data.query && data.query.pages;
+    if(!pages) return [];
+    return Object.values(pages).sort((a, b) => (a.index || 0) - (b.index || 0))
+      .filter(p => p.fullurl && p.title)
+      .map(p => ({ kind:'백과', title:p.title, url:p.fullurl, site:'위키백과', date:'',
+                   summary:String(p.extract || '').replace(/\s+/g, ' ').slice(0, 300) }));
+  }
+  function wikiUrl(query){
+    return 'https://ko.wikipedia.org/w/api.php?' + toQuery({
+      action:'query', format:'json', origin:'*', redirects:'1',
+      generator:'search', gsrsearch:query, gsrlimit:'3', gsrnamespace:'0',
+      prop:'extracts|info', exintro:'1', explaintext:'1', exchars:'350', exlimit:'3', inprop:'url'
+    });
+  }
+  async function wikiSearch(question, query, T){
+    const term = pick(WIKI_TERMS, question + ' ' + query, T.wiki);
+    const jobs = [getJson(wikiUrl(query), 3000)];
+    if(term !== query) jobs.push(getJson(wikiUrl(term), 3000));
+    const res = await Promise.all(jobs);
+    return uniqueByUrl(readWiki(res[0]).concat(readWiki(res[1]))).slice(0, 2);
+  }
+  function uniqueByUrl(list){
+    const seen = {};
+    return list.filter(x => { if(!x || !x.url || seen[x.url]) return false; seen[x.url] = true; return true; });
+  }
+  function renderSources(m, sources, waitingNews){
     const items = (sources || []).filter(s => safeUrl(s.url));
-    if(!items.length) return '';
+    if(!items.length && !waitingNews){ m.src.innerHTML = ''; return; }
     let html = '<div class="box"><b>📚 인터넷에서 찾은 자료</b>';
     items.forEach(s => {
       const icon = s.kind === '뉴스' ? '📰 ' : '📖 ';
       const sub = [s.site, s.date].filter(Boolean).join(' · ');
       html += link(s.url, icon + esc(s.title) + (sub ? '<small>' + esc(sub) + '</small>' : ''), 'src');
     });
-    return html + '</div>';
+    if(waitingNews) html += '<div class="nofound">📰 뉴스를 찾고 있어요…</div>';
+    m.src.innerHTML = html + '</div>';
+    scrollDown();
   }
 
-  // ▶️ 유튜브 영상 — 답변을 먼저 보여 준 뒤, 영상 칸을 따로 채움
-  const VIDEO_MAX = 3;
+  /* ---------- ▶️ 영상 ---------- */
+  function makeVideo(id, title, channel, teacher){
+    return { id:id, title:title, channel:channel || '', teacher:!!teacher, trusted:true,
+             thumb:'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg', url:'https://www.youtube.com/watch?v=' + id };
+  }
+  // ⚡ 서버를 기다리지 않고 바로 고르는 영상: ① 선생님 추천(영상목록 시트) → ② 내장 목록
+  function localVideos(query, T){
+    const qn = query.replace(/\s/g, '').toLowerCase();
+    const teacher = (serverInfo.teacherVideos || [])
+      .filter(v => (v.keys || []).some(k => k && (qn.includes(k) || k.includes(qn))))
+      .map(v => makeVideo(v.id, v.title, v.channel, true));
+
+    // 탭 이름에서 붙은 말(예: '유전자 재조합')을 뺀 나머지(예: 'GMO')에 맞는 영상을 먼저
+    const specific = query.replace(/생명\s*기술|핵\s*이식(\s*기술)?|유전자\s*재조합|세포\s*융합|조직\s*배양|기술/g, ' ').trim();
+    let hit = VIDEOS.filter(r => r[0].test(query));
+    if(specific){
+      const first = hit.filter(r => r[0].test(specific));
+      hit = first.concat(hit.filter(r => !first.includes(r)));
+    }
+    // 모자라면 같은 주제(탭 또는 맞은 영상의 주제)의 영상으로 채우기
+    const keys = [];
+    if(T.key !== 'all' && T.key !== 'custom') keys.push(T.key);
+    hit.forEach(r => { if(!keys.includes(r[1])) keys.push(r[1]); });
+    keys.forEach(tk => VIDEOS.forEach(r => { if(hit.length < VIDEO_MAX + 2 && r[1] === tk && !hit.includes(r)) hit.push(r); }));
+
+    return uniqueByUrl(teacher.concat(hit.map(r => makeVideo(r[2], r[3], r[4], false)))).slice(0, VIDEO_MAX + 2);
+  }
+  // 썸네일이 진짜로 열리는 영상만 남기기 (지워진 영상 숨기기) — 길어도 1.5초
+  function aliveVideos(list){
+    return new Promise(resolve => {
+      if(!list.length){ resolve([]); return; }
+      const state = list.map(() => null);
+      let left = list.length, done = false;
+      const finish = () => {
+        if(done) return; done = true;
+        // 아직 확인이 안 끝난 영상은 확실한 영상(trusted)만 보여 줌
+        resolve(list.filter((v, i) => state[i] === true || (state[i] === null && v.trusted)));
+      };
+      list.forEach((v, i) => {
+        const img = new Image();
+        img.onload = () => { state[i] = img.naturalWidth > 120; if(--left <= 0) finish(); };
+        img.onerror = () => { state[i] = false; if(--left <= 0) finish(); };
+        img.src = v.thumb;
+      });
+      setTimeout(finish, 1500);
+    });
+  }
   function embedUrl(id, autoplay){
     return 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) +
       '?rel=0&modestbranding=1&playsinline=1' + (autoplay ? '&autoplay=1' : '');
@@ -331,215 +603,214 @@
       (v.channel ? ' <small>· ' + esc(v.channel) + '</small>' : '') +
       link(v.url, '유튜브에서 보기 ↗', '');
   }
-  // 첫 영상은 플레이어로 바로, 나머지는 썸네일 → 누르면 플레이어에서 재생
-  function playerHtml(list){
-    const first = list[0];
-    let html = '<div class="player"><iframe src="' + embedUrl(first.id, false) + '" title="' + esc(first.title) + '"' +
-      ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"' +
-      ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>' +
-      '<div class="nowplaying">' + nowPlayingHtml(first) + '</div>';
-    if(list.length > 1){
-      html += '<div class="vthumbs">' + list.map((v, i) =>
-        '<button type="button" class="vthumb' + (i === 0 ? ' on' : '') + '" data-i="' + i + '">' +
-        '<img src="' + safeUrl(v.thumb) + '" alt=""><span>' + (i === 0 ? '▶ ' : '') + esc(v.title) + '</span></button>'
-      ).join('') + '</div>';
-    }
-    return html;
-  }
-  function wirePlayer(box, list){
-    box.querySelectorAll('.vthumb').forEach(btn => {
-      btn.onclick = () => {
-        const v = list[Number(btn.dataset.i)];
-        box.querySelector('.player iframe').src = embedUrl(v.id, true);
-        box.querySelector('.nowplaying').innerHTML = nowPlayingHtml(v);
-        box.querySelectorAll('.vthumb').forEach(b => {
-          b.classList.toggle('on', b === btn);
-          b.querySelector('span').textContent = (b === btn ? '▶ ' : '') + list[Number(b.dataset.i)].title;
-        });
-      };
-    });
-  }
-  function addVideoBox(msgEl){
-    const box = document.createElement('div');
-    box.className = 'box';
-    box.innerHTML = '<b>▶️ 찾은 영상</b><div class="nofound">🔎 영상을 찾고 있어요…</div>';
-    msgEl.insertBefore(box, msgEl.querySelector('.meta') || null);
-    chat.scrollTop = chat.scrollHeight;
+  function videoBox(m, more){
+    m.vid.innerHTML = '<div class="box"><b>▶️ 찾은 영상</b><div class="vplayer"></div><div class="vthumbs-wrap"></div>' +
+      '<div class="nofound vstatus">🔎 영상을 찾고 있어요…</div>' +
+      '<div>' + link(more, '🔍 유튜브에서 더 찾아보기', 'ytmore') + '</div></div>';
+    const box = m.vid.firstChild;
+    box._list = []; box._cur = 0;
+    scrollDown();
     return box;
   }
-  // 찾은 영상 중 '썸네일이 진짜로 열리는 것'만 최대 3개 보여 주기
-  function fillVideoBox(box, videos, more, done){
-    const list = (videos || []).filter(v => safeUrl(v.url) && safeUrl(v.thumb));
-    const moreLink = safeUrl(more) ? '<div>' + link(more, '🔍 유튜브에서 더 찾아보기', 'ytmore') + '</div>' : '';
-    box.innerHTML = '<b>▶️ 찾은 영상</b><div class="vlist"></div><div class="nofound vstatus">' +
-      (list.length ? '🔎 영상을 확인하고 있어요…' : '') + '</div>' + moreLink;
-    const vlist = box.querySelector('.vlist'), status = box.querySelector('.vstatus');
-    const ok = [];
-    let pending = 0, finished = false;
-
-    function finish(){
-      if(finished) return;
-      finished = true;
-      ok.sort((a, b) => a.i - b.i);
-      const shown = ok.map(x => x.v);
-      if(shown.length){
-        vlist.innerHTML = playerHtml(shown);
-        wirePlayer(box, shown);
-        box.closest('.msg').classList.add('has-video');
-        status.className = 'credit';
-        status.textContent = '▶ 버튼을 누르면 여기서 바로 재생돼요. 재생이 안 되는 영상은 "유튜브에서 보기"를 눌러 주세요.';
-      } else {
-        status.textContent = '알맞은 영상을 바로 찾지 못했어요. 아래 버튼으로 유튜브에서 직접 찾아보세요.';
-      }
-      chat.scrollTop = chat.scrollHeight;
-      if(done) done(shown);
+  // 첫 영상은 플레이어로 바로, 나머지는 썸네일 → 누르면 플레이어에서 재생
+  // (영상이 뒤늦게 더 와도 재생 중인 플레이어는 건드리지 않고 썸네일만 다시 그림)
+  function showVideos(m, box, list){
+    box._list = list;
+    const player = box.querySelector('.vplayer');
+    if(list.length && !player.firstChild){
+      const first = list[0];
+      player.innerHTML = '<div class="player"><iframe src="' + embedUrl(first.id, false) + '" title="' + esc(first.title) + '"' +
+        ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"' +
+        ' referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>' +
+        '<div class="nowplaying">' + nowPlayingHtml(first) + '</div>';
+      m.el.classList.add('has-video');
     }
-    function step(){ pending--; if(pending <= 0 || ok.length >= VIDEO_MAX) finish(); }
-
-    // 확실한 영상(선생님 추천·내장 목록·유튜브 API)은 바로, 나머지만 썸네일로 확인
-    list.forEach((v, i) => { if(v.trusted && ok.length < VIDEO_MAX) ok.push({ v: v, i: i }); });
-    const toCheck = ok.length >= VIDEO_MAX ? [] : list.map((v, i) => ({ v: v, i: i })).filter(x => !x.v.trusted);
-    pending = toCheck.length;
-    if(!pending){ finish(); return; }
-    toCheck.forEach(({ v, i }) => {
-      const img = new Image();
-      img.onload = () => {
-        if(!finished && img.naturalWidth > 120 && ok.length < VIDEO_MAX) ok.push({ v: v, i: i });
-        step();
+    const wrap = box.querySelector('.vthumbs-wrap');
+    wrap.innerHTML = list.length > 1 ? '<div class="vthumbs">' + list.map((v, i) =>
+      '<button type="button" class="vthumb' + (i === box._cur ? ' on' : '') + '" data-i="' + i + '">' +
+      '<img src="' + safeUrl(v.thumb) + '" alt=""><span>' + (i === box._cur ? '▶ ' : '') + esc(v.title) + '</span></button>'
+    ).join('') + '</div>' : '';
+    wrap.querySelectorAll('.vthumb').forEach(btn => {
+      btn.onclick = () => {
+        box._cur = Number(btn.dataset.i);
+        const v = box._list[box._cur];
+        box.querySelector('.player iframe').src = embedUrl(v.id, true);
+        box.querySelector('.nowplaying').innerHTML = nowPlayingHtml(v);
+        showVideos(m, box, box._list);
       };
-      img.onerror = step;
-      img.src = v.thumb;
     });
-    setTimeout(finish, 6000);
+    scrollDown();
+  }
+  function videoStatus(box, text, isCredit){
+    const s = box.querySelector('.vstatus');
+    s.className = (isCredit ? 'credit' : 'nofound') + ' vstatus';
+    s.textContent = text;
+  }
+  async function runVideos(m, query, T, found){
+    const more = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+    const box = videoBox(m, more);
+    const PLAY_TIP = '▶ 버튼을 누르면 여기서 바로 재생돼요. 재생이 안 되는 영상은 "유튜브에서 보기"를 눌러 주세요.';
+
+    // ① 화면이 가진 영상: 바로
+    let list = (await aliveVideos(localVideos(query, T))).slice(0, VIDEO_MAX);
+    if(list.length){ showVideos(m, box, list); videoStatus(box, PLAY_TIP, true); }
+    found.video = list;
+
+    // ② 모자랄 때만 서버에 더 물어봄 (유튜브 API 키가 있거나, 하나도 못 찾았을 때)
+    const needMore = serverInfo.moreVideos !== false && (list.length === 0 || (list.length < VIDEO_MAX && serverInfo.yt));
+    if(needMore){
+      if(!list.length) videoStatus(box, '🔎 유튜브에서 영상을 찾고 있어요… (조금 걸려요)');
+      try{
+        const r = await api('videos', { query: query, topic: T.key }, 30000);
+        const fresh = ((r && r.videos) || []).filter(v => v && v.id && safeUrl(v.url) && safeUrl(v.thumb) && !list.some(x => x.id === v.id));
+        list = list.concat(await aliveVideos(fresh)).slice(0, VIDEO_MAX);
+        if(list.length){ showVideos(m, box, list); videoStatus(box, PLAY_TIP, true); }
+        found.video = list;
+      }catch(e){}
+    }
+    if(!list.length) videoStatus(box, '알맞은 영상을 바로 찾지 못했어요. 아래 버튼으로 유튜브에서 직접 찾아보세요.');
   }
 
-  // 📷 사진
-  function galleryHtml(images){
-    const items = (images || []).filter(im => safeUrl(im.thumb) && safeUrl(im.page));
-    if(!items.length) return '';
+  /* ---------- 📷 사진 (위키미디어 공용 — 브라우저가 직접) ---------- */
+  function readCommons(data){
+    const pages = data && data.query && data.query.pages;
+    if(!pages) return [];
+    const strip = s => String((s && s.value) || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    return Object.values(pages).sort((a, b) => (a.index || 0) - (b.index || 0))
+      .filter(p => { const ii = p.imageinfo && p.imageinfo[0]; return ii && ii.thumburl && /image\/(jpeg|png)/.test(ii.mime || ''); })
+      .slice(0, 4)
+      .map(p => {
+        const ii = p.imageinfo[0], meta = ii.extmetadata || {};
+        return {
+          thumb: ii.thumburl, page: ii.descriptionurl,
+          title: String(p.title || '').replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ').slice(0, 60),
+          author: strip(meta.Artist).slice(0, 40), license: strip(meta.LicenseShortName).slice(0, 30)
+        };
+      });
+  }
+  function commonsSearch(keyword){
+    return getJson('https://commons.wikimedia.org/w/api.php?' + toQuery({
+      action:'query', format:'json', origin:'*',
+      generator:'search', gsrsearch:keyword + ' filetype:bitmap', gsrnamespace:'6', gsrlimit:'12',
+      prop:'imageinfo', iiprop:'url|mime|extmetadata', iiurlwidth:'480'
+    }), 5000).then(readCommons);
+  }
+  // 한글 낱말의 영어 이름 (위키백과의 다른 언어 연결) — 직접 입력 주제용
+  async function englishName(word){
+    const data = await getJson('https://ko.wikipedia.org/w/api.php?' + toQuery({
+      action:'query', format:'json', origin:'*', redirects:'1', titles:word, prop:'langlinks', lllang:'en', lllimit:'1'
+    }), 2500);
+    const pages = data && data.query && data.query.pages;
+    const p = pages && Object.values(pages)[0];
+    return (p && p.langlinks && p.langlinks[0] && p.langlinks[0]['*']) || '';
+  }
+  async function runPhotos(m, question, query, T, found){
+    m.img.innerHTML = '<div class="box"><b>📷 사진</b><div class="nofound">🔎 사진을 찾고 있어요…</div></div>';
+    scrollDown();
+    let kw = pick(PHOTO_TERMS, question + ' ' + T.custom, '');
+    if(!kw && T.custom) kw = await englishName(T.custom);
+    const fallback = T.photo || 'biotechnology laboratory';
+    if(!kw) kw = fallback;
+    found.photoQuery = kw;
+
+    let images = await commonsSearch(kw);
+    if(!images.length && kw !== fallback){ found.photoQuery = fallback; images = await commonsSearch(fallback); }
+    images = images.filter(im => safeUrl(im.thumb) && safeUrl(im.page));
+    found.photo = images;
+
+    if(!images.length){
+      m.img.innerHTML = '<div class="box"><b>📷 사진</b><div class="nofound">알맞은 사진을 바로 찾지 못했어요. 아래 "🖼 이미지"를 눌러 찾아보세요.</div></div>';
+      return;
+    }
     let html = '<div class="box"><b>📷 사진</b><div class="gallery">';
-    items.forEach(im => {
+    images.forEach(im => {
       const by = [im.author, im.license].filter(Boolean).join(' · ');
       html += '<figure>' + link(im.page,
-        '<img src="' + safeUrl(im.thumb) + '" alt="' + esc(im.title) + '" loading="lazy">' +
+        '<img src="' + safeUrl(im.thumb) + '" alt="' + esc(im.title) + '">' +
         '<figcaption>' + esc(im.title) + (by ? '<small>' + esc(by) + '</small>' : '') + '</figcaption>', '') + '</figure>';
     });
-    return html + '</div><div class="credit">사진 출처: 위키미디어 공용 · 누르면 원본과 저작권 정보를 볼 수 있어요.</div></div>';
+    m.img.innerHTML = html + '</div><div class="credit">사진 출처: 위키미디어 공용 · 누르면 원본과 저작권 정보를 볼 수 있어요.</div></div>';
+    m.img.querySelectorAll('img').forEach(img => img.addEventListener('load', scrollDown));
+    scrollDown();
   }
-
-  function addMsg(role, text, opts){
-    opts = opts || {};
-    const d = document.createElement('div');
-    d.className = 'msg ' + role + (opts.error ? ' error' : '');
-    if(role === 'user'){
-      d.innerHTML = '<span class="tag">' + esc(opts.label || topicLabel()) + '</span>' + esc(text).replace(/\n/g, '<br>');
-    } else {
-      d.innerHTML = formatAnswer(text)
-        + sourcesHtml(opts.sources)
-        + galleryHtml(opts.images)
-        + (opts.meta ? '<div class="meta">' + esc(opts.meta) + '</div>' : '');
-    }
-    chat.appendChild(d);
-    chat.scrollTop = chat.scrollHeight;
-    d.querySelectorAll('img').forEach(img => img.addEventListener('load', () => { chat.scrollTop = chat.scrollHeight; }));
-    return d;
-  }
-
-  function showTyping(label){
-    const t = document.createElement('div');
-    t.className = 'typing'; t.id = 'typing';
-    t.innerHTML = '<span></span><span></span><span></span>' + (label ? '<em>' + esc(label) + '</em>' : '');
-    chat.appendChild(t); chat.scrollTop = chat.scrollHeight;
-  }
-  function hideTyping(){ const t = $('typing'); if(t) t.remove(); }
-  function setBusy(v){ busy = v; sendBtn.disabled = v; sendBtn.textContent = v ? '생각 중…' : '보내기'; }
 
   /* ---------- 보내기 ---------- */
-  function send(text, isExample){
+  async function send(text, isExample){
     text = (text || qBox.value).trim();
     if(!text || busy) return;
     if(!userName){ openModal(); return; }
     if(topic === 'custom' && !customTopic){
-      addMsg('bot', '✏️ 먼저 위 입력란에 **주제**를 적고 [정하기]를 눌러 주세요.', { error:true });
+      addBotMsg('✏️ 먼저 위 입력란에 **주제**를 적고 [정하기]를 눌러 주세요.', { error:true });
       const box = $('customInput'); if(box) box.focus();
       return;
     }
-    const sentTopic = topic, sentName = userName, sentCustom = topic === 'custom' ? customTopic : '';
+    const T = topicInfo(), sentTopic = topic, sentName = userName, sentCustom = T.custom;
     const sentHistory = history.slice();
-    addMsg('user', text);
+    addUserMsg(text);
     qBox.value = '';
     setBusy(true);
 
-    const video = VIDEO_WORDS.test(text);
-    const photo = PHOTO_WORDS.test(text) && (/사진|이미지|그림/.test(text) || !video);
-    const web = WEB_WORDS.test(text) && (/자료|최신|최근|요즘|뉴스|기사|링크|출처|사이트|웹|인터넷|올해|작년|현재|지금/.test(text) || (!video && !photo));
+    const started = performance.now();
+    const want = detectIntent(text);
+    const query = makeQuery(text, T, sentHistory);
+    const found = { web: [], video: [], photo: [], photoQuery: '' };
+
+    // ⚡ 말풍선을 먼저 만들고, 준비되는 것부터 차례로 채움 (영상·사진·자료는 답을 기다리지 않음)
+    const m = addBotMsg(null);
     const jobs = [];
-    if(web) jobs.push('인터넷 자료');
-    if(photo) jobs.push('사진');
-    showTyping(jobs.length ? jobs.join(' · ') + '을(를) 찾고 있어요…' : '');
+    if(want.video) jobs.push(runVideos(m, query, T, found).catch(() => {}));
+    if(want.photo) jobs.push(runPhotos(m, text, query, T, found).catch(() => {}));
+    renderPortal(m, query);
 
-    const started = Date.now();
-
-    // ⚡ 영상은 답변을 기다리지 않고 지금 바로 같이 찾기 시작
-    const vid = { done: false, result: null, onReady: null };
-    if(video){
-      const ready = r => { vid.done = true; vid.result = r; if(vid.onReady) vid.onReady(r); };
-      api('videosFor', { question: text, topic: sentTopic, history: sentHistory, custom: sentCustom })
-        .then(r => ready(r || { videos: [] }))
-        .catch(() => ready({ videos: [] }));
+    let wiki = null;
+    if(want.web){
+      renderSources(m, [], true);
+      wiki = await wikiSearch(text, query, T).catch(() => []);
+      found.web = wiki;
+      renderSources(m, wiki, true);
     }
 
-    api('ask', { name: sentName, topic: sentTopic, question: text, history: sentHistory, isExample: !!isExample, custom: sentCustom })
-      .then(res => {
-        res = res || { ok: false, answer: '답을 받지 못했어요. 다시 보내 주세요.' };
-        hideTyping(); setBusy(false);
-        const sec = ((Date.now() - started) / 1000).toFixed(1);
-        const msgEl = addMsg('bot', res.answer, {
-          error: !res.ok, sources: res.sources, images: res.images,
-          meta: res.ok ? '⚡ ' + sec + '초' + (res.cached ? ' · 저장된 답' : '') : ''
-        });
-        if(res.ok){
-          history.push({ role:'user', text:text }, { role:'model', text:res.answer });
-          history = history.slice(-4);
-        }
-        qBox.focus();
+    // 💬 답: 교과서 바로 답(FAQ)이 있으면 0초, 없으면 서버(AI)
+    let res;
+    const faq = sentTopic !== 'custom' ? FAQ[norm(text)] : null;
+    if(faq){
+      res = { ok: true, answer: faq, instant: true };
+    } else {
+      try{
+        const args = { name: sentName, topic: sentTopic, question: text, history: sentHistory, isExample: !!isExample, custom: sentCustom, query: query };
+        if(wiki) args.wiki = wiki.map(w => ({ title: w.title, summary: w.summary, url: w.url }));
+        res = (await api('ask', args)) || { ok: false, answer: '답을 받지 못했어요. 다시 보내 주세요.' };
+      }catch(err){
+        res = { ok: false, answer: '연결에 문제가 생겼어요. 잠시 후 다시 보내 주세요.\n(' + (err && err.message ? err.message : err) + ')' };
+      }
+    }
 
-        // 🗂 기록 저장 (화면은 이미 끝났고, 뒤에서 저장 → 학생은 기다리지 않음)
-        const save = videos => {
-          const found = []
-            .concat((res.sources || []).map(s => ({ type:'웹', title:s.title, url:s.url })))
-            .concat((videos || []).map(v => ({ type:'영상', title:v.title, url:v.url })))
-            .concat((res.images || []).map(im => ({ type:'사진', title:im.title, url:im.page })));
-          api('log', { name: sentName, topic: sentTopic, question: text, answer: res.answer, ok: res.ok,
-                       found: found, query: res.query || {}, seconds: sec, custom: sentCustom }).catch(() => {});
-        };
+    const sec = ((performance.now() - started) / 1000).toFixed(1);
+    m.ans.innerHTML = formatAnswer(res.answer);
+    if(!res.ok) m.el.classList.add('error');
+    m.meta.textContent = res.ok ? '⚡ ' + sec + '초' + (res.instant ? ' · 교과서 바로 답' : res.cached ? ' · 저장된 답' : '') : '';
+    if(want.web || (res.sources && res.sources.length)){
+      found.web = uniqueByUrl((found.web || []).concat(res.sources || []));
+      renderSources(m, found.web, false);
+    }
+    setBusy(false);
+    scrollDown();
+    qBox.focus();
 
-        // ▶️ 영상: 같이 찾고 있던 결과를 붙임
-        if(res.ok && res.videoQuery){
-          const box = addVideoBox(msgEl);
-          const more = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(res.videoQuery);
-          let settled = false;
-          const show = r => {
-            if(settled) return;
-            settled = true; clearTimeout(giveUp);
-            fillVideoBox(box, r && r.videos, (r && r.more) || more, save);
-          };
-          const giveUp = setTimeout(() => show({ videos: [] }), 30000);
-          if(!video){
-            api('videos', { query: res.videoQuery, topic: sentTopic }).then(show).catch(() => show({ videos: [] }));
-          } else if(vid.done){
-            show(vid.result);
-          } else {
-            vid.onReady = show;
-          }
-        } else {
-          save([]);
-        }
-      })
-      .catch(err => {
-        hideTyping(); setBusy(false);
-        addMsg('bot', '연결에 문제가 생겼어요. 잠시 후 다시 보내 주세요.\n(' + (err && err.message ? err.message : err) + ')', { error:true });
-      });
+    if(res.ok){
+      history.push({ role:'user', text:text }, { role:'model', text:res.answer });
+      history = history.slice(-4);
+    }
+
+    // 🗂 기록 저장 (화면은 이미 끝났고, 영상·사진까지 다 찾은 뒤 뒤에서 저장 → 학생은 기다리지 않음)
+    await Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, 12000))]);
+    const list = []
+      .concat((found.web || []).map(s => ({ type:'웹', title:s.title, url:s.url })))
+      .concat((found.video || []).map(v => ({ type:'영상', title:v.title, url:v.url })))
+      .concat((found.photo || []).map(im => ({ type:'사진', title:im.title, url:im.page })));
+    api('log', { name: sentName, topic: sentTopic, question: text, answer: res.answer, ok: res.ok, found: list,
+                 query: { web: want.web ? query : '', video: want.video ? query : '', photo: found.photoQuery },
+                 seconds: sec, custom: sentCustom }).catch(() => {});
   }
 
   sendBtn.onclick = () => send();
@@ -550,21 +821,31 @@
   /* ---------- 시작 ---------- */
   try{ customTopic = sessionStorage.getItem('lifeTechCustom') || ''; }catch(e){}
   renderTopics();
-  addMsg('bot', '안녕하세요! 저는 **생명 기술 도우미**예요. 🌱\n위에서 주제를 고르고 궁금한 점을 물어보세요.\n**✏️ 직접 입력**을 누르면 궁금한 주제를 직접 정할 수 있어요.\n- **"자료 찾아 줘"** → 위키백과·뉴스 자료\n- **"영상 찾아 줘"** → 유튜브 영상\n- **"사진 보여 줘"** → 사진\n예시 질문을 눌러도 바로 답해 드려요!');
+  addBotMsg('안녕하세요! 저는 **생명 기술 도우미**예요. 🌱\n위에서 주제를 고르고 궁금한 점을 물어보세요.\n**✏️ 직접 입력**을 누르면 궁금한 주제를 직접 정할 수 있어요.\n- **"자료 찾아 줘"** → 위키백과·뉴스 자료\n- **"영상 찾아 줘"** → 유튜브 영상\n- **"사진 보여 줘"** → 사진\n예시 질문을 눌러도 바로 답해 드려요!');
   try{ userName = sessionStorage.getItem('lifeTechName') || ''; }catch(e){}
   if(userName){ $('whoami').textContent = userName; $('modal').classList.add('hidden'); }
   else { openModal(); }
 
-  // 서버를 미리 깨우고, 연결되면 버전을 화면에 표시 (선생님 확인용)
-  api('warmup', {}, 30000)
-    .then(v => { $('ver').textContent = '· ' + v + ' · ' + PAGE_VERSION; })
-    .catch(err => {
-      $('ver').textContent = '· 서버 연결 안 됨';
-      addMsg('bot', '⚠️ 서버에 연결되지 않았어요.\n(' + err.message + ')', { error:true });
+  // 서버를 미리 깨우고, 버전과 선생님 추천 영상 목록을 받아 둠
+  function warmup(first){
+    return api('warmup', {}, 30000).then(v => {
+      const info = (v && typeof v === 'object') ? v : { version: String(v || '') };   // 예전 서버는 버전 글자만 보냄
+      serverInfo = Object.assign({ teacherVideos: [], yt: false, moreVideos: true }, info);
+      $('ver').textContent = serverInfo.version === PAGE_VERSION
+        ? '· ' + PAGE_VERSION
+        : '· 화면 ' + PAGE_VERSION + ' / 서버 ' + (serverInfo.version || '?') + ' ⚠️';
+      if(first && serverInfo.version !== PAGE_VERSION){
+        addBotMsg('⚠️ 선생님 확인: 서버(Code.gs)가 ' + (serverInfo.version || '예전 버전') + '이에요. Code.gs를 ' + PAGE_VERSION + '로 바꾸고 **새 버전으로 배포**하면 더 빨라져요.', { error:true });
+      }
     });
+  }
+  warmup(true).catch(err => {
+    $('ver').textContent = '· 서버 연결 안 됨';
+    addBotMsg('⚠️ 서버에 연결되지 않았어요.\n(' + err.message + ')', { error:true });
+  });
   // ⚡ 화면이 열려 있는 동안 4분마다 서버를 살짝 깨워 둠
   setInterval(() => {
-    if(document.visibilityState === 'visible' && !busy) api('warmup', {}, 30000).catch(() => {});
+    if(document.visibilityState === 'visible' && !busy) warmup(false).catch(() => {});
   }, 240000);
 </script>
 </body>
