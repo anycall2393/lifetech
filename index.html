@@ -18,7 +18,18 @@
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:var(--bg);color:var(--text)}
-  .app{max-width:780px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--white);box-shadow:0 0 24px rgba(0,0,0,.06)}
+
+  /* 🧫 생명 기술 배경 사진 (위키미디어 공용) — 못 불러오면 연초록 그라데이션 */
+  .bg{position:fixed;inset:0;z-index:0;background:linear-gradient(135deg,#dff0e5,#b9d8c5);overflow:hidden}
+  .bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.8s ease}
+  .bg img.show{opacity:1;animation:kb 40s linear forwards}
+  @keyframes kb{from{transform:scale(1)}to{transform:scale(1.1)}}
+  @media (prefers-reduced-motion: reduce){ .bg img.show{animation:none} }
+  .bg .shade{position:absolute;inset:0;background:linear-gradient(rgba(238,246,240,.5),rgba(231,242,235,.72))}
+  .bgcredit{position:fixed;right:8px;bottom:8px;z-index:0;font-size:10px;line-height:1.3;color:#fff;background:rgba(20,40,30,.5);padding:3px 9px;border-radius:999px;text-decoration:none;max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bgcredit:empty{display:none}
+
+  .app{position:relative;z-index:1;max-width:780px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:rgba(255,255,255,.86);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);box-shadow:0 0 24px rgba(0,0,0,.08)}
 
   header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:16px 20px}
   header h1{margin:0;font-size:20px}
@@ -43,6 +54,7 @@
   .custom-now{margin-top:6px;font-size:13px;color:var(--green-d)}
 
   .chat{flex:1;overflow-y:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:10px}
+  .msg.bot{background:rgba(242,244,243,.94)}
   .msg{max-width:88%;padding:10px 14px;border-radius:14px;font-size:15px;line-height:1.6;word-break:keep-all;overflow-wrap:anywhere}
   .msg.user{align-self:flex-end;background:var(--green);color:#fff;border-bottom-right-radius:4px}
   .msg.bot{align-self:flex-start;background:#f2f4f3;border-bottom-left-radius:4px}
@@ -105,9 +117,9 @@
   .inputbar button{background:var(--green);color:#fff;border:none;border-radius:12px;padding:0 18px;font-size:15px;font-weight:600;cursor:pointer}
   .inputbar button:disabled{background:#a9c3b3;cursor:not-allowed}
 
-  .modal{position:fixed;inset:0;background:rgba(20,40,30,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+  .modal{position:fixed;inset:0;z-index:10;background:rgba(20,40,30,.45);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px}
   .modal.hidden{display:none}
-  .card{background:#fff;border-radius:16px;padding:24px;width:100%;max-width:380px;text-align:center}
+  .card{background:rgba(255,255,255,.96);border-radius:16px;padding:24px;width:100%;max-width:380px;text-align:center}
   .card h2{margin:0 0 6px;font-size:20px}
   .card p{margin:0 0 16px;color:var(--muted);font-size:14px}
   .card input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;margin-bottom:12px}
@@ -116,6 +128,8 @@
 </style>
 </head>
 <body>
+<div class="bg" id="bg"><div class="shade"></div></div>
+<a class="bgcredit" id="bgcredit" target="_blank" rel="noopener"></a>
 <div class="app">
   <header>
     <h1>🧬 생명 기술 질문 챗봇</h1>
@@ -166,7 +180,7 @@
    *   - 서버(Apps Script)는 AI 답변만 만들어요. 답을 기다리는 동안 영상·사진·자료가 먼저 떠요.
    *   - 예시 질문은 미리 써 둔 교과서 답(FAQ)으로 바로 보여 줘요.
    * ===================================================== */
-  const PAGE_VERSION = 'v13';
+  const PAGE_VERSION = 'v13.1';   // 점(.) 앞 숫자가 서버(Code.gs) 버전과 같으면 정상
 
   // 주소 정리: 앞뒤 공백·따옴표가 섞여 들어가도 괜찮게
   const SERVER = (typeof API_URL === 'string' ? API_URL : '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
@@ -864,16 +878,67 @@
   if(userName){ $('whoami').textContent = userName; $('modal').classList.add('hidden'); }
   else { openModal(); }
 
+  /* ---------- 🧫 배경 사진 (위키미디어 공용, 생명 기술) ---------- */
+  const BG_QUERIES = ['plant tissue culture laboratory', 'DNA double helix model', 'biotechnology laboratory', 'petri dish agar', 'cell culture laboratory', 'greenhouse seedlings'];
+  async function bgPhotos(){
+    try{ const saved = JSON.parse(sessionStorage.getItem('lifeTechBg') || 'null'); if(saved && saved.length) return saved; }catch(e){}
+    const q = BG_QUERIES[Math.floor(Math.random() * BG_QUERIES.length)];
+    const data = await getJson('https://commons.wikimedia.org/w/api.php?' + toQuery({
+      action:'query', format:'json', origin:'*',
+      generator:'search', gsrsearch:q + ' filetype:bitmap', gsrnamespace:'6', gsrlimit:'20',
+      prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:'1600'
+    }), 6000);
+    const pages = data && data.query && data.query.pages;
+    if(!pages) return [];
+    const strip = x => String((x && x.value) || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const list = Object.values(pages).sort((a, b) => (a.index || 0) - (b.index || 0))
+      .filter(p => { const ii = p.imageinfo && p.imageinfo[0];
+        return ii && ii.thumburl && /image\/(jpeg|png)/.test(ii.mime || '') && ii.width >= 1000 && ii.width > ii.height; })
+      .slice(0, 5)
+      .map(p => { const ii = p.imageinfo[0], meta = ii.extmetadata || {};
+        return { src: ii.thumburl, page: ii.descriptionurl,
+                 author: strip(meta.Artist).slice(0, 40), license: strip(meta.LicenseShortName).slice(0, 30) }; });
+    try{ sessionStorage.setItem('lifeTechBg', JSON.stringify(list)); }catch(e){}
+    return list;
+  }
+  async function startBackground(){
+    try{
+      const photos = (await bgPhotos()).filter(ph => safeUrl(ph.src) && safeUrl(ph.page));
+      if(!photos.length) return;
+      const bg = $('bg'), credit = $('bgcredit');
+      let i = 0, cur = null;
+      const show = ph => {
+        const img = new Image();
+        img.onload = () => {
+          bg.insertBefore(img, bg.querySelector('.shade'));
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            img.classList.add('show');
+            if(cur){ const old = cur; old.classList.remove('show'); setTimeout(() => old.remove(), 2000); }
+            cur = img;
+            credit.href = ph.page;
+            credit.textContent = '사진: ' + [ph.author, ph.license].filter(Boolean).join(' · ') + ' (위키미디어 공용)';
+          }));
+        };
+        img.src = ph.src;
+      };
+      show(photos[0]);
+      if(photos.length > 1) setInterval(() => { if(document.visibilityState === 'visible'){ i = (i + 1) % photos.length; show(photos[i]); } }, 20000);
+    }catch(e){}
+  }
+  startBackground();
+
   // 서버를 미리 깨우고, 버전과 선생님 추천 영상 목록을 받아 둠
   function warmup(first){
     return api('warmup', {}, 30000).then(v => {
       const info = (v && typeof v === 'object') ? v : { version: String(v || '') };   // 예전 서버는 버전 글자만 보냄
       serverInfo = Object.assign({ teacherVideos: [], yt: false, moreVideos: true }, info);
-      $('ver').textContent = serverInfo.version === PAGE_VERSION
+      const base = v => String(v || '').split('.')[0];
+      const match = base(serverInfo.version) === base(PAGE_VERSION);
+      $('ver').textContent = match
         ? '· ' + PAGE_VERSION
         : '· 화면 ' + PAGE_VERSION + ' / 서버 ' + (serverInfo.version || '?') + ' ⚠️';
-      if(first && serverInfo.version !== PAGE_VERSION){
-        addBotMsg('⚠️ 선생님 확인: 서버(Code.gs)가 ' + (serverInfo.version || '예전 버전') + '이에요. Code.gs를 ' + PAGE_VERSION + '로 바꾸고 **새 버전으로 배포**하면 더 빨라져요.', { error:true });
+      if(first && !match){
+        addBotMsg('⚠️ 선생님 확인: 서버(Code.gs)가 ' + (serverInfo.version || '예전 버전') + '이에요. Code.gs를 ' + PAGE_VERSION.split('.')[0] + '로 바꾸고 **새 버전으로 배포**하면 더 빨라져요.', { error:true });
       }
     });
   }
