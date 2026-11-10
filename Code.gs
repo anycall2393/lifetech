@@ -1,6 +1,6 @@
 /**
  * ===============================================
- * 🧬 생명 기술 질문 챗봇 v12 (GitHub판 서버)
+ * 🧬 생명 기술 질문 챗봇 v13 (GitHub판 서버)
  *    중3 기술 6단원 · 생명 기술의 이해 (Google Apps Script + Gemini)
  * ===============================================
  *
@@ -24,7 +24,7 @@
  *    코드를 바꾼 뒤에는 반드시 [배포 → 배포 관리 → 연필(수정) → 버전: 새 버전 → 배포]
  */
 
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 
 // ① AI 스튜디오 API 키
 const GEMINI_API_KEY = '여기에_AI_스튜디오_API_키를_붙여넣으세요';
@@ -34,7 +34,7 @@ const YOUTUBE_API_KEY = '';
 
 // 앞에서부터 시도 (Flash-Lite가 가장 빠름). 없는 모델은 자동으로 건너뜁니다.
 const GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
-const MAX_OUTPUT_TOKENS = 600;
+const MAX_OUTPUT_TOKENS = 450;
 
 const CACHE_SECONDS = 21600;          // 같은 질문 답 저장 시간(6시간)
 const SHEET_NAME = '질문기록';
@@ -111,7 +111,7 @@ const SYSTEM_PROMPT = `
 
 [답변 원칙]
 1. 중학교 3학년이 이해할 수 있는 쉬운 말로, 인사말 없이 핵심부터 바로 말해요.
-2. 길이는 핵심만 3~4문장으로 짧게. 목록은 꼭 필요할 때만 3개 이내로 써요.
+2. 길이는 아주 짧게: 설명 3문장 + '생각해 보기' 1줄, 모두 합쳐 250자 안팎. 덧붙이는 말·반복·맺음말은 쓰지 마요. 목록은 꼭 필요할 때만 3개 이내로 써요.
 3. 실제 사례를 1개 이상 들어 줘요.
 4. 마지막 줄에는 더 생각해 볼 짧은 질문을 하나 던져 줘요. (예: "🤔 생각해 보기: ...")
 5. 서식은 **굵게**, 줄바꿈, '- ' 목록만 사용해요. 표·제목(#)·코드블록·인터넷 주소(URL)는 쓰지 마요.
@@ -177,8 +177,42 @@ const ACTIONS = {
     const T = topicInfo_(a.topic, a.custom);
     return videos_({ query: makeQuery_(String(a.question || '').slice(0, 500), T, a.history), topic: T.key });
   },
-  log: log_
+  log: log_,
+  bench: bench_
 };
+
+/** ⚡ 모델 속도 비교: 모델마다 같은 질문을 한 번씩 보내 시간을 재고, 빠른 순서로 쓰도록 기억
+ *  (화면에서 /점검 을 보내거나, 편집기에서 '모델속도비교'를 ▶ 실행) */
+function bench_() {
+  const cache = CacheService.getScriptCache();
+  if (cache.get('bench_lock')) return { skipped: true, message: '방금 쟀어요. 1분 뒤에 다시 해 주세요.', order: (loadState_(cache.get('gstate') || ''), modelOrder_()) };
+  cache.put('bench_lock', '1', 60);
+  loadState_('');
+  GS_.bad = {}; GS_.busy = {};
+  const contents = buildContents_(topicInfo_('all'), '핵 이식 기술이 뭐예요?', [], { web: false, video: false, photo: false }, null);
+  const results = [];
+  GEMINI_MODELS.forEach(function (model) {
+    for (let t = 0; t < THINKING_OPTIONS.length; t++) {
+      const s = { model: model, think: t };
+      const t0 = Date.now();
+      const res = fetch_(geminiReq_(s, contents));
+      const ms = Date.now() - t0;
+      const code = res ? res.getResponseCode() : 0;
+      if (isKeyError_(res)) { results.push({ model: model, think: t, code: code, ms: ms }); return; }
+      noteResult_(s, code);
+      let chars = 0;
+      if (code === 200) { try { chars = readGemini_(res).length; } catch (e) {} }
+      results.push({ model: model, think: t, code: code, ms: ms, chars: chars });
+      if (code !== 400) return;
+    }
+  });
+  const ok = results.filter(function (r) { return r.code === 200; }).sort(function (a, b) { return a.ms - b.ms; });
+  GS_.order = ok.map(function (r) { return r.model; });
+  GS_.busy = {};
+  GS_DIRTY_ = 2;
+  saveState_();
+  return { results: results, order: modelOrder_() };
+}
 
 /** 화면이 열릴 때 서버를 미리 깨우고, 버전과 선생님 추천 영상 목록을 알려 줌 */
 function warmup_() {
@@ -213,13 +247,15 @@ function ask_(a) {
 
   const cache = CacheService.getScriptCache();
   const key = cacheKey_(T, question);
-  const got = cache.getAll([key, 'setup']);   // 저장된 답과 모델 설정을 한 번에 읽기
+  const got = cache.getAll([key, 'gstate']);   // 저장된 답과 모델 상태를 한 번에 읽기
   if (canCache && got[key]) {
     try { const saved = JSON.parse(got[key]); saved.cached = true; return saved; } catch (e) {}
   }
 
   try {
-    const setup = getSetup_(got.setup);
+    const t0 = Date.now();
+    TRIES_ = [];
+    const setup = getSetup_(got.gstate || '');
     const q = cleanText_(a.query, 60) || makeQuery_(question, T, fullHistory);
 
     // 📖 위키백과: 화면이 찾아서 보내 줌 (안 보냈으면 서버가 직접 찾음)
@@ -254,20 +290,22 @@ function ask_(a) {
       sources = sources.concat(news);
       extra = extra.concat(news);
       contents = buildContents_(T, question, history, want, sources);
-      gRes = fetch_(geminiReq_(setup, contents));
+      gRes = geminiFetch_(setup, contents);
     } else if (want.web) {
       /* ---------- ⚡ AI와 뉴스를 동시에 ---------- */
       contents = buildContents_(T, question, history, want, sources);
       const b = new Batch_();
       b.add('gemini', geminiReq_(setup, contents));
       b.add('news', newsReq_(q, false));
+      const tb = Date.now();
       b.run();
       gRes = b.get('gemini');
+      TRIES_.push({ model: setup.model, think: setup.think, code: gRes ? gRes.getResponseCode() : 0, ms: Date.now() - tb, withNews: true });
       extra = readNews_(b.get('news')).slice(0, NEWS_COUNT);
     } else {
       /* ---------- ⚡ AI만 ---------- */
       contents = buildContents_(T, question, history, want, null);
-      gRes = fetch_(geminiReq_(setup, contents));
+      gRes = geminiFetch_(setup, contents);
     }
 
     const answer = finishGemini_(gRes, setup, contents);
@@ -283,6 +321,8 @@ function ask_(a) {
     if (canCache) {
       try { cache.put(key, JSON.stringify(out), CACHE_SECONDS); } catch (e) {}
     }
+    // 속도 점검용: 어떤 모델을 몇 번 불렀고 얼마나 걸렸는지 (저장된 답에는 넣지 않음)
+    out.dbg = { tries: TRIES_, serverMs: Date.now() - t0 };
     return out;
   } catch (e) {
     return { ok: false, answer: e.message };
@@ -393,29 +433,74 @@ function buildContents_(T, question, history, want, sources) {
   return contents;
 }
 
-/** 지난번에 성공한 모델·설정 (캐시 → 스크립트 속성 → 기본값) */
-function getSetup_(cached) {
-  let saved = cached;
-  if (!saved) {
-    saved = PropertiesService.getScriptProperties().getProperty('GEMINI_SETUP');
-    if (saved) { try { CacheService.getScriptCache().put('setup', saved, CACHE_SECONDS); } catch (e) {} }
+/* ---------- 모델 상태: 어떤 모델이 빠른지·되는지 기억 ----------
+ * think : 모델마다 통한 '생각 끄기' 설정 번호      (오래 기억)
+ * bad   : 없는 모델(404)                           (오래 기억)
+ * order : '모델속도비교'로 잰 빠른 순서             (오래 기억)
+ * busy  : 사용량 초과(429)·서버 오류가 난 모델 → 1분만 쉬고 다시 씀 (잠깐만 기억)
+ *         ※ 바쁜 모델 대신 쓴 느린 모델에 눌러앉지 않도록, 바쁨은 오래 기억하지 않아요. */
+let GS_ = null;        // 이번 요청에서 읽은 모델 상태
+let GS_DIRTY_ = 0;     // 1: 캐시만 다시 쓰기, 2: 스크립트 속성까지
+let TRIES_ = [];       // 이번 요청에서 Gemini를 부른 기록 (속도 점검용)
+const BUSY_MS = 60000;
+
+function loadState_(cached) {
+  let raw = cached;
+  if (!raw) {
+    raw = PropertiesService.getScriptProperties().getProperty('GEMINI_STATE');
+    GS_DIRTY_ = 1;
   }
-  if (saved) {
-    try {
-      const s = JSON.parse(saved);
-      if (GEMINI_MODELS.indexOf(s.model) >= 0 && THINKING_OPTIONS[s.think] !== undefined) return { model: s.model, think: s.think, saved: true };
-    } catch (e) {}
-  }
-  return { model: GEMINI_MODELS[0], think: 0, saved: false };
+  let st = null;
+  if (raw) { try { st = JSON.parse(raw); } catch (e) {} }
+  GS_ = { think: (st && st.think) || {}, bad: (st && st.bad) || {}, busy: (st && st.busy) || {}, order: (st && st.order) || [] };
+  return GS_;
 }
 
-function saveSetup_(setup) {
-  if (setup.saved) return;   // 이미 저장된 설정 그대로면 쓰지 않음 (빠르게)
-  const val = JSON.stringify({ model: setup.model, think: setup.think });
+function modelOrder_() {
+  const order = (GS_.order || []).filter(function (m) { return GEMINI_MODELS.indexOf(m) >= 0; });
+  GEMINI_MODELS.forEach(function (m) { if (order.indexOf(m) < 0) order.push(m); });
+  return order;
+}
+
+/** 지금 쓸 모델 고르기: 빠른 순서대로, 없는 모델·잠깐 바쁜 모델은 건너뜀 */
+function getSetup_(cached) {
+  if (!GS_ || cached !== undefined) loadState_(cached);
+  const now = Date.now();
+  const order = modelOrder_().filter(function (m) { return !GS_.bad[m]; });
+  const free = order.filter(function (m) { return !(GS_.busy[m] > now); });
+  const model = free[0] || order[0] || GEMINI_MODELS[0];
+  return { model: model, think: GS_.think[model] || 0 };
+}
+
+function noteResult_(setup, code) {
+  if (code === 200) {
+    if (GS_.busy[setup.model]) { delete GS_.busy[setup.model]; GS_DIRTY_ = Math.max(GS_DIRTY_, 1); }
+    if ((GS_.think[setup.model] || 0) !== setup.think) { GS_.think[setup.model] = setup.think; GS_DIRTY_ = 2; }
+  } else if (code === 404) {
+    GS_.bad[setup.model] = true; GS_DIRTY_ = 2;
+  } else if (code !== 400) {
+    GS_.busy[setup.model] = Date.now() + BUSY_MS; GS_DIRTY_ = Math.max(GS_DIRTY_, 1);
+  }
+}
+
+function saveState_() {
+  if (!GS_ || !GS_DIRTY_) return;
   try {
-    CacheService.getScriptCache().put('setup', val, CACHE_SECONDS);
-    PropertiesService.getScriptProperties().setProperty('GEMINI_SETUP', val);
+    CacheService.getScriptCache().put('gstate', JSON.stringify(GS_), CACHE_SECONDS);
+    if (GS_DIRTY_ === 2) {
+      PropertiesService.getScriptProperties().setProperty('GEMINI_STATE',
+        JSON.stringify({ think: GS_.think, bad: GS_.bad, order: GS_.order }));
+    }
   } catch (e) {}
+  GS_DIRTY_ = 0;
+}
+
+/** Gemini 한 번 부르기 + 걸린 시간 기록 */
+function geminiFetch_(setup, contents, extra) {
+  const t = Date.now();
+  const res = fetch_(geminiReq_(setup, contents, extra));
+  TRIES_.push({ model: setup.model, think: setup.think, code: res ? res.getResponseCode() : 0, ms: Date.now() - t });
+  return res;
 }
 
 function geminiReq_(setup, contents, extra) {
@@ -437,28 +522,37 @@ function geminiReq_(setup, contents, extra) {
 
 /** 첫 응답이 성공이면 그대로, 실패면 다른 모델·설정을 '기다리지 않고' 차례로 시도 */
 function finishGemini_(res, setup, contents) {
-  if (res && res.getResponseCode() === 200) {
-    saveSetup_(setup);
-    return readGemini_(res);
-  }
-  let last = res;
-  if (isKeyError_(last)) return readGemini_(last);
-  // 방금 실패가 '설정이 안 맞음(400)'이 아니면 그 모델은 통째로 건너뜀 (사용량 초과·없는 모델 등)
-  const skipModel = (last && last.getResponseCode() === 400) ? '' : setup.model;
-  for (let m = 0; m < GEMINI_MODELS.length; m++) {
-    if (GEMINI_MODELS[m] === skipModel) continue;
-    for (let t = 0; t < THINKING_OPTIONS.length; t++) {
-      const s = { model: GEMINI_MODELS[m], think: t, saved: false };
-      if (s.model === setup.model && s.think === setup.think) continue;   // 방금 실패한 조합
-      last = fetch_(geminiReq_(s, contents));
-      const code = last ? last.getResponseCode() : 0;
-      if (code === 200) { saveSetup_(s); return readGemini_(last); }
-      if (isKeyError_(last)) return readGemini_(last);
-      if (code === 400) continue;   // 안 맞는 설정 → 다음 설정
-      break;                        // 없는 모델(404)·사용량 초과(429)·서버 오류 → 다음 모델
+  try {
+    let last = res;
+    let code = last ? last.getResponseCode() : 0;
+    if (isKeyError_(last)) return readGemini_(last);
+    noteResult_(setup, code);
+    if (code === 200) return readGemini_(last);
+
+    const tried = {};
+    tried[setup.model + '|' + setup.think] = true;
+    const skip = {};
+    if (code !== 400) skip[setup.model] = true;   // 설정 문제(400)가 아니면 그 모델은 통째로 건너뜀
+    const models = modelOrder_();
+    for (let m = 0; m < models.length; m++) {
+      const model = models[m];
+      if (skip[model] || GS_.bad[model]) continue;
+      for (let t = 0; t < THINKING_OPTIONS.length; t++) {
+        if (tried[model + '|' + t]) continue;
+        const s = { model: model, think: t };
+        last = geminiFetch_(s, contents);
+        code = last ? last.getResponseCode() : 0;
+        if (isKeyError_(last)) return readGemini_(last);
+        noteResult_(s, code);
+        if (code === 200) return readGemini_(last);
+        if (code === 400) continue;   // 안 맞는 설정 → 다음 설정
+        break;                        // 없는 모델·사용량 초과·서버 오류 → 다음 모델
+      }
     }
+    return readGemini_(last);
+  } finally {
+    saveState_();
   }
-  return readGemini_(last);
 }
 
 function isKeyError_(res) {
@@ -640,9 +734,9 @@ function geminiVideos_(query) {
     '검색 결과에서 실제로 확인한 주소만 적어.';
   const contents = [{ role: 'user', parts: [{ text: prompt }] }];
   const extra = { tools: [{ google_search: {} }] };
-  let res = fetch_(geminiReq_(getSetup_(CacheService.getScriptCache().get('setup')), contents, extra));
+  let res = fetch_(geminiReq_(getSetup_(CacheService.getScriptCache().get('gstate') || ''), contents, extra));
   if (!res || res.getResponseCode() !== 200) {
-    res = fetch_(geminiReq_({ model: 'gemini-flash-latest', think: 2 }, contents, extra));
+    res = fetch_(geminiReq_({ model: GEMINI_MODELS[1], think: 2 }, contents, extra));
   }
   const cand = readVideoFinder_(res);
   const list = cand.items.slice();
@@ -889,7 +983,7 @@ function 초기설정() {
     PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', GEMINI_API_KEY.trim());
     console.log('🔑 키를 스크립트 속성에 저장했어요. 이제 코드의 GEMINI_API_KEY를 처음 글자("여기에_…")로 되돌려도 작동해요.');
   }
-  CacheService.getScriptCache().removeAll(['tv', 'setup']);
+  CacheService.getScriptCache().removeAll(['tv', 'gstate', 'bench_lock']);
   console.log('✅ 질문기록 · 검색기록 · 영상목록 시트 준비 완료 (' + APP_VERSION + ')');
 }
 
@@ -907,21 +1001,26 @@ function 연결점검() {
   console.log('영상목록 시트(선생님 추천): ' + teacherVideos_().length + '개');
   console.log('(검색 확인: ' + ((Date.now() - t) / 1000).toFixed(1) + '초)');
 
-  PropertiesService.getScriptProperties().deleteProperty('GEMINI_SETUP');
-  CacheService.getScriptCache().remove('setup');
+  CacheService.getScriptCache().remove('bench_lock');
   try {
-    const contents = buildContents_(topicInfo_('all'), '핵 이식 기술이 뭐예요?', [], { web: false, video: false, photo: false }, null);
-    t = Date.now();
-    const s0 = getSetup_('');
-    finishGemini_(fetch_(geminiReq_(s0, contents)), s0, contents);
-    const s = getSetup_('');
-    console.log('Gemini: ✅ ' + s.model + ' (처음 ' + ((Date.now() - t) / 1000).toFixed(1) + '초)');
-    t = Date.now();
-    finishGemini_(fetch_(geminiReq_(s, contents)), s, contents);
-    console.log('Gemini 답변 1개 만드는 시간: ' + ((Date.now() - t) / 1000).toFixed(1) + '초  ← 학생이 기다리는 시간의 대부분이에요');
+    apiKey_();
+    const r = bench_();
+    r.results.forEach(function (x) {
+      console.log('Gemini ' + x.model + ' (생각 끄기 설정 ' + x.think + '): ' +
+        (x.code === 200 ? '✅ ' + (x.ms / 1000).toFixed(1) + '초 · ' + x.chars + '자' : '❌ 코드 ' + x.code));
+    });
+    console.log('→ 앞으로 쓰는 순서: ' + r.order.join(' → ') + '  (맨 앞 모델의 시간이 학생이 기다리는 시간의 대부분이에요)');
   } catch (e) {
     console.log('Gemini: ❌ ' + e.message);
   }
+}
+
+/** ⚡ 모델마다 속도를 재서 가장 빠른 모델부터 쓰게 함 (느려졌다 싶으면 ▶ 실행) */
+function 모델속도비교() {
+  CacheService.getScriptCache().remove('bench_lock');
+  const r = bench_();
+  r.results.forEach(function (x) { console.log(x.model + ' / 설정 ' + x.think + ' → ' + (x.code === 200 ? (x.ms / 1000).toFixed(1) + '초' : '코드 ' + x.code)); });
+  console.log('→ 쓰는 순서: ' + r.order.join(' → '));
 }
 
 /** ③ 실제 질문으로 시험 (시트에 '테스트'로 기록됨) */
